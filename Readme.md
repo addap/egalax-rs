@@ -1,5 +1,14 @@
-# Files
-I recorded some output from connecting the touchscreen & touch interactions.
+# egalax-rs
+
+An input driver for our old egalax touchscreen. Translates the raw binary output from the screen to control a virtual mouse with uinput.
+
+## Files
+
+- output of `objdump -d eGTouchD` dis.txt
+- Guide/ contains some pdfs which describe the raw binary format of the touchscreen's messages.
+- the .tar.gz contains the manufacturer's driver which basically does the same thing, but worse, since it's probably written in C.
+
+### I recorded some output from connecting the touchscreen & touch interactions.
 
 - The raw output from `/dev/hidraw0` in `hidraw.bin`
 
@@ -19,7 +28,7 @@ I recorded some output from connecting the touchscreen & touch interactions.
 
  After installing the evdev driver it works, the touchscreen is registered in xinput and moves the cursor.
 
-# Ways to get information
+## Ways to get information
 - `lsusb` lists all usb devices. 
 - /sys
 
@@ -39,7 +48,7 @@ Probably scrapes /sys (similar to explained [here](https://unix.stackexchange.co
 - `dmesg` kernel messages. The first one to tell you when a new device is connected.
 - `/etc/modprobe.d/blacklist` blacklist for kernel modules
 
-# Using above commands to get info about egalax touchscreen (while `usbtouchscreen` blacklisted)
+## Using above commands to get info about egalax touchscreen (while `usbtouchscreen` blacklisted)
 1. plug in egalax usb cable 
 2. `dmesg`
 ```
@@ -345,12 +354,12 @@ When `usbtouchscreen` is not blacklisted and I insert the usb cable, I see the f
 [ 1514.092755] usbhid: USB HID core driver
 ```
 
-# Using eGTouchD
+## Using eGTouchD
 
 The touchscreen works if you just put the supplied xorg conf file in /usr/share/X11/xorg.conf.d and start the daemon with `eGTouchD start`.
 The binary also just reads the raw input and uses uinput to create a virtual mouse.
 
-# Input stack
+## Input stack
 1. How one event travels from e.g. a connected mouse to an application
 ```
 X client
@@ -405,7 +414,7 @@ maybe the same as 2 but using their binary /bin/eGTouchD instead of our rust pro
 
 
 
-# TODO
+## TODO
 - [x] use `usb-devices` while monitor is connected to check if it lists `usbhid`. Yes, so it does use the `usbhid` driver.
 ```
 T:  Bus=03 Lev=01 Prnt=01 Port=01 Cnt=01 Dev#= 11 Spd=12  MxCh= 0
