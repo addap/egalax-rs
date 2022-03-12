@@ -354,6 +354,8 @@ When `usbtouchscreen` is not blacklisted and I insert the usb cable, I see the f
 [ 1514.092755] usbhid: USB HID core driver
 ```
 
+[This random blogpost](http://handychen.blogspot.com/2011/03/try-egalaxy-usb-touch-for-tslib.html) says that `usbhid` and `usbtouchscreen` are in conflict anyways, maybe `usbtouchscreen` was superseeded at some point.
+
 ## Using eGTouchD
 
 The touchscreen works if you just put the supplied xorg conf file in /usr/share/X11/xorg.conf.d and start the daemon with `eGTouchD start`.
@@ -440,3 +442,5 @@ Does not work. The eGToucD binar creates a virtual input device with uinput, whi
 It does work, if I also install `xf86-input-evdev`. 
 
 - [ ] With the custom xorg.conf, both the "touchcontroller" and the "touchcontroller touchscreen" are registered in xinput. Does it matter? By adding a `Driver "void"` stanza to our xorg.conf we could also ignore the "touchcontroller".
+
+- [ ] try out calibration with [this](https://ubuntuforums.org/archive/index.php/t-1478877.html)
