@@ -1,0 +1,164 @@
+//! Implements parsing of the raw binary packets that our touchscreen sends.
+
+use std::{error, fmt};
+
+/// A representation of a packet sent over USB
+#[derive(PartialEq, Debug)]
+pub struct Packet {
+    is_touching: bool,
+    x: u16,
+    y: u16,
+    res: u8,
+}
+
+impl Packet {
+    pub fn is_touching(&self) -> bool {
+        self.is_touching
+    }
+    pub fn x(&self) -> u16 {
+        self.x
+    }
+    pub fn y(&self) -> u16 {
+        self.y
+    }
+    pub fn res(&self) -> u8 {
+        self.res
+    }
+}
+
+/// Type of raw bytes sent over USB
+pub type RawPacket = [u8; 6];
+
+/// Errors that can happen during parsing of a packet
+#[derive(PartialEq, Debug)]
+pub enum ParsePacketError {
+    MalformedHeader(u8),
+    ResolutionErrorX,
+    ResolutionErrorY,
+}
+
+/// Constants for bit positions in the packet
+mod bits {
+    pub const TOUCH_BIT: u8 = 0x01;
+    pub const RES_BITS: u8 = 0x06;
+}
+
+/// Parsing logic
+impl TryFrom<RawPacket> for Packet {
+    type Error = ParsePacketError;
+
+    fn try_from(packet: RawPacket) -> Result<Self, Self::Error> {
+        if packet[0] != 0x02 {
+            return Err(ParsePacketError::MalformedHeader(packet[0]));
+        }
+
+        let res = match packet[1] & bits::RES_BITS {
+            0x00 => 11,
+            0x02 => 12,
+            0x04 => 13,
+            0x05 => 14,
+            _ => unreachable!("only two bits should be left, match can never succeed"),
+        };
+
+        let is_touching = (packet[1] & bits::TOUCH_BIT) == 0x01;
+
+        let y: u16 = ((packet[3] as u16) << 8) | (packet[2] as u16);
+        let x: u16 = ((packet[5] as u16) << 8) | (packet[4] as u16);
+
+        if y >> res != 0x00 {
+            return Err(ParsePacketError::ResolutionErrorY);
+        } else if x >> res != 0x00 {
+            return Err(ParsePacketError::ResolutionErrorX);
+        }
+
+        Ok(Packet {
+            is_touching,
+            x,
+            y,
+            res,
+        })
+    }
+}
+
+impl error::Error for ParsePacketError {}
+
+impl fmt::Display for ParsePacketError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = match *self {
+            ParsePacketError::MalformedHeader(h) => format!("Packet header is malformed: {}", h),
+            ParsePacketError::ResolutionErrorX => {
+                String::from("X value is out of range of given resolution")
+            }
+            ParsePacketError::ResolutionErrorY => {
+                String::from("Y value is out of range of given resolution")
+            }
+        };
+        f.write_str(&description)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_parse_touch_upper_left() {
+        let raw_packet: RawPacket = [0x02, 0x03, 0x3b, 0x01, 0x32, 0x01];
+
+        assert_eq!(
+            Ok(Packet {
+                is_touching: true,
+                x: 306,
+                y: 315,
+                res: 12
+            }),
+            Packet::try_from(raw_packet)
+        );
+    }
+
+    #[test]
+    fn test_parse_release_upper_left() {
+        let raw_packet: RawPacket = [0x02, 0x02, 0x35, 0x01, 0x39, 0x01];
+
+        assert_eq!(
+            Ok(Packet {
+                is_touching: false,
+                x: 313,
+                y: 309,
+                res: 12
+            }),
+            Packet::try_from(raw_packet)
+        );
+    }
+
+    #[test]
+    fn test_malformed_const() {
+        let raw_packet: RawPacket = [0xaa, 0x02, 0x35, 0x01, 0x39, 0x01];
+
+        assert_eq!(
+            Err(ParsePacketError::MalformedHeader(0xaa)),
+            Packet::try_from(raw_packet)
+        );
+    }
+
+    #[test]
+    fn test_malformed_res_y() {
+        let raw_packet: RawPacket = [0x02, 0x02, 0x35, 0x11, 0x39, 0x01];
+
+        assert_eq!(
+            Err(ParsePacketError::ResolutionErrorY),
+            Packet::try_from(raw_packet)
+        );
+    }
+
+    #[test]
+    fn test_malformed_res_x() {
+        let raw_packet: RawPacket = [0x02, 0x02, 0x35, 0x01, 0x39, 0x11];
+
+        assert_eq!(
+            Err(ParsePacketError::ResolutionErrorX),
+            Packet::try_from(raw_packet)
+        );
+    }
+}
