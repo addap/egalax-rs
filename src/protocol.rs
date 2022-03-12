@@ -26,8 +26,9 @@ impl Packet {
     }
 }
 
+pub const RAW_PACKET_LEN: usize = 6;
 /// Type of raw bytes sent over USB
-pub type RawPacket = [u8; 6];
+pub type RawPacket = [u8; RAW_PACKET_LEN];
 
 /// Errors that can happen during parsing of a packet
 #[derive(PartialEq, Debug)]
@@ -84,7 +85,7 @@ impl error::Error for ParsePacketError {}
 
 impl fmt::Display for ParsePacketError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = match *self {
+        let description = match self {
             ParsePacketError::MalformedHeader(h) => format!("Packet header is malformed: {}", h),
             ParsePacketError::ResolutionErrorX => {
                 String::from("X value is out of range of given resolution")

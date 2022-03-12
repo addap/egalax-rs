@@ -1,6 +1,4 @@
-mod protocol;
-
-use protocol::Packet;
+use egalax_rs::protocol::Packet;
 use std::error;
 use std::result::Result;
 
