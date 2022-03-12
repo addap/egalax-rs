@@ -1,40 +1,102 @@
 use crate::protocol::{Packet, ParsePacketError, RawPacket, RAW_PACKET_LEN};
+use crate::{dimX, dimY, Point};
 use std::{error, fmt, io};
 
-type Point = (u16, u16);
-
 #[derive(Debug, PartialEq)]
-pub struct Driver {
+struct Driver {
     touch_state: TouchState,
-    x_bounds: Point,
-    y_bounds: Point,
+    ul_bounds: Point,
+    lr_bounds: Point,
     monitor_info: MonitorInfo,
 }
 
 impl Driver {
-    pub fn new(x_bounds: Point, y_bounds: Point) -> Self {
+    fn new(ul_bounds: Point, lr_bounds: Point) -> Self {
         Self {
             touch_state: TouchState::default(),
-            x_bounds,
-            y_bounds,
+            ul_bounds,
+            lr_bounds,
             monitor_info: MonitorInfo::default(),
         }
+    }
+
+    // TODO implement debouncing
+    fn update(&mut self, packet: Packet) -> Vec<ChangeSet> {
+        let mut changes = Vec::new();
+
+        if self.touch_state.is_touching != packet.is_touching() {
+            self.touch_state.is_touching = packet.is_touching();
+            if packet.is_touching() {
+                changes.push(ChangeSet::Pressed);
+            } else {
+                changes.push(ChangeSet::Released);
+            }
+        }
+
+        if self.touch_state.x() != packet.x() {
+            self.touch_state.set_x(packet.x());
+            changes.push(ChangeSet::ChangedX(packet.x()));
+        }
+
+        if self.touch_state.y() != packet.y() {
+            self.touch_state.set_y(packet.y());
+            changes.push(ChangeSet::ChangedY(packet.y()));
+        }
+
+        changes
+    }
+}
+
+/// Changes for which we need to generate evdev events after we processed a packet
+// TODO does it make sense to collapse ChangedX & ChangedY into a Changed(T, udim<T>)? Probably not possible
+#[derive(Debug, PartialEq)]
+enum ChangeSet {
+    ChangedX(dimX),
+    ChangedY(dimY),
+    Pressed,
+    Released,
+}
+
+impl ChangeSet {
+    fn send_event(changes: &[ChangeSet]) -> Result<(), EgalaxError> {
+        println!("Sending event {:#?}", changes);
+        Ok(())
     }
 }
 
 #[derive(Debug, PartialEq)]
 struct TouchState {
     is_touching: bool,
-    x: u16,
-    y: u16,
+    p: Point,
+}
+
+impl TouchState {
+    pub fn is_touching(&self) -> bool {
+        self.is_touching
+    }
+
+    pub fn x(&self) -> dimX {
+        self.p.x
+    }
+
+    pub fn set_x(&mut self, x: dimX) -> () {
+        self.p.x = x;
+    }
+
+    pub fn y(&self) -> dimY {
+        self.p.y
+    }
+
+    pub fn set_y(&mut self, y: dimY) -> () {
+        self.p.y = y;
+    }
 }
 
 impl Default for TouchState {
     fn default() -> Self {
         TouchState {
             is_touching: false,
-            x: 0,
-            y: 0,
+            p: (0, 0).into(),
         }
     }
 }
@@ -49,8 +111,8 @@ struct MonitorInfo {
 impl Default for MonitorInfo {
     fn default() -> Self {
         MonitorInfo {
-            ul: (0, 0),
-            lr: (1000, 1000),
+            ul: (0, 0).into(),
+            lr: (1000, 1000).into(),
         }
     }
 }
@@ -88,10 +150,10 @@ impl fmt::Display for EgalaxError {
 }
 
 /// Call a function on all packets in the given stream
-pub fn process_packets<T, F>(stream: &mut T, f: F) -> Result<(), EgalaxError>
+pub fn process_packets<T, F>(stream: &mut T, f: &mut F) -> Result<(), EgalaxError>
 where
     T: io::Read,
-    F: Fn(Packet) -> (),
+    F: FnMut(Packet) -> Result<(), EgalaxError>,
 {
     let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
 
@@ -103,11 +165,23 @@ where
             return Err(EgalaxError::UnexpectedEOF);
         }
         let packet = Packet::try_from(raw_packet)?;
-        f(packet);
+        f(packet)?;
     }
 }
 
 /// Print the sequence of packets in the given stream
 pub fn print_packets(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
-    process_packets(stream, |packet| println!("{:#?}", packet))
+    process_packets(stream, &mut |packet| Ok(println!("{:#?}", packet)))
+}
+
+pub fn virtual_mouse(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
+    let ul_bounds = (300, 300).into();
+    let lr_bounds = (3800, 3800).into();
+    let mut state = Driver::new(ul_bounds, lr_bounds);
+
+    let mut process_packet = |packet| {
+        let changes = state.update(packet);
+        ChangeSet::send_event(&changes)
+    };
+    process_packets(stream, &mut process_packet)
 }

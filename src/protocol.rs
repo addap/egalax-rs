@@ -2,12 +2,13 @@
 
 use std::{error, fmt};
 
+use crate::{dimX, dimY, DimX, DimY, Point, UdimRepr};
+
 /// A representation of a packet sent over USB
 #[derive(PartialEq, Debug)]
 pub struct Packet {
     is_touching: bool,
-    x: u16,
-    y: u16,
+    p: Point,
     res: u8,
 }
 
@@ -15,11 +16,11 @@ impl Packet {
     pub fn is_touching(&self) -> bool {
         self.is_touching
     }
-    pub fn x(&self) -> u16 {
-        self.x
+    pub fn x(&self) -> dimX {
+        self.p.x
     }
-    pub fn y(&self) -> u16 {
-        self.y
+    pub fn y(&self) -> dimY {
+        self.p.y
     }
     pub fn res(&self) -> u8 {
         self.res
@@ -63,8 +64,8 @@ impl TryFrom<RawPacket> for Packet {
 
         let is_touching = (packet[1] & bits::TOUCH_BIT) == 0x01;
 
-        let y: u16 = ((packet[3] as u16) << 8) | (packet[2] as u16);
-        let x: u16 = ((packet[5] as u16) << 8) | (packet[4] as u16);
+        let y: UdimRepr = ((packet[3] as UdimRepr) << 8) | (packet[2] as UdimRepr);
+        let x: UdimRepr = ((packet[5] as UdimRepr) << 8) | (packet[4] as UdimRepr);
 
         if y >> res != 0x00 {
             return Err(ParsePacketError::ResolutionErrorY);
@@ -74,8 +75,7 @@ impl TryFrom<RawPacket> for Packet {
 
         Ok(Packet {
             is_touching,
-            x,
-            y,
+            p: (x, y).into(),
             res,
         })
     }
@@ -110,8 +110,7 @@ mod tests {
         assert_eq!(
             Ok(Packet {
                 is_touching: true,
-                x: 306,
-                y: 315,
+                p: (306, 315).into(),
                 res: 12
             }),
             Packet::try_from(raw_packet)
@@ -125,8 +124,7 @@ mod tests {
         assert_eq!(
             Ok(Packet {
                 is_touching: false,
-                x: 313,
-                y: 309,
+                p: (313, 309).into(),
                 res: 12
             }),
             Packet::try_from(raw_packet)

@@ -1,2 +1,77 @@
 pub mod driver;
 pub mod protocol;
+
+use std::{fmt, marker::PhantomData};
+
+pub trait Dim {}
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct DimX;
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct DimY;
+struct DimAny;
+
+impl Dim for DimX {}
+impl Dim for DimY {}
+impl Dim for DimAny {}
+
+/// Integer type of a screen dimension
+type UdimRepr = u16;
+/// Public wrapper which uses PhantomData over Dim to statically tell apart x and y of monitor.
+#[allow(non_camel_case_types)]
+#[repr(transparent)]
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct udim<T: Dim>(PhantomData<T>, UdimRepr);
+#[allow(non_camel_case_types)]
+pub type dimX = udim<DimX>;
+#[allow(non_camel_case_types)]
+pub type dimY = udim<DimY>;
+
+#[derive(Debug, PartialEq)]
+pub struct Point {
+    pub x: dimX,
+    pub y: dimY,
+}
+
+impl<T: Dim> fmt::Display for udim<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.1.fmt(f)
+    }
+}
+
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = format!("(x: {}, y: {})", self.x, self.y);
+        f.write_str(&description)
+    }
+}
+
+impl<T: Dim> From<u16> for udim<T> {
+    fn from(c: u16) -> Self {
+        udim(PhantomData, c as UdimRepr)
+    }
+}
+
+/// Just for the tests where we use string literals
+impl<T: Dim> From<i32> for udim<T> {
+    fn from(c: i32) -> Self {
+        udim(PhantomData, c as UdimRepr)
+    }
+}
+
+impl From<(i32, i32)> for Point {
+    fn from((x, y): (i32, i32)) -> Self {
+        Point {
+            x: x.into(),
+            y: y.into(),
+        }
+    }
+}
+
+impl From<(UdimRepr, UdimRepr)> for Point {
+    fn from((x, y): (UdimRepr, UdimRepr)) -> Self {
+        Point {
+            x: x.into(),
+            y: y.into(),
+        }
+    }
+}
