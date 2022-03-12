@@ -1,0 +1,56 @@
+[ 75200.929] (II) config/udev: Adding input device eGalax Inc. USB TouchController (/dev/input/mouse2)
+[ 75200.929] (II) No input driver specified, ignoring this device.
+[ 75200.929] (II) This device may have been added with another device file.
+[ 75200.929] (II) config/udev: Adding input device eGalax Inc. USB TouchController (/dev/input/js0)
+[ 75200.929] (II) No input driver specified, ignoring this device.
+[ 75200.929] (II) This device may have been added with another device file.
+[ 75200.930] (II) config/udev: Adding input device eGalax Inc. USB TouchController Touchscreen (/dev/input/mouse3)
+[ 75200.930] (II) No input driver specified, ignoring this device.
+[ 75200.930] (II) This device may have been added with another device file.
+[ 75201.052] (II) config/udev: Adding input device eGalax Inc. USB TouchController (/dev/input/event18)
+[ 75201.052] (**) eGalax Inc. USB TouchController: Applying InputClass "libinput pointer catchall"
+[ 75201.052] (**) eGalax Inc. USB TouchController: Applying InputClass "eGalax usbhid class"
+[ 75201.052] (II) LoadModule: "evdev"
+[ 75201.052] (II) Loading /usr/lib/xorg/modules/input/evdev_drv.so
+[ 75201.052] (II) Module evdev: vendor="X.Org Foundation"
+[ 75201.052] 	compiled for 1.21.1.1, module version = 2.10.6
+[ 75201.052] 	Module class: X.Org XInput Driver
+[ 75201.052] 	ABI class: X.Org XInput driver, version 24.4
+[ 75201.052] (II) Using input driver 'evdev' for 'eGalax Inc. USB TouchController'
+[ 75201.052] (**) eGalax Inc. USB TouchController: always reports core events
+[ 75201.052] (**) evdev: eGalax Inc. USB TouchController: Device: "/dev/input/event18"
+[ 75201.107] (--) evdev: eGalax Inc. USB TouchController: Vendor 0xeef Product 0x1
+[ 75201.107] (--) evdev: eGalax Inc. USB TouchController: Found 3 mouse buttons
+[ 75201.107] (--) evdev: eGalax Inc. USB TouchController: Found absolute axes
+[ 75201.107] (--) evdev: eGalax Inc. USB TouchController: Found x and y absolute axes
+[ 75201.107] (--) evdev: eGalax Inc. USB TouchController: Found absolute touchscreen
+[ 75201.107] (II) evdev: eGalax Inc. USB TouchController: Configuring as touchscreen
+[ 75201.107] (**) evdev: eGalax Inc. USB TouchController: YAxisMapping: buttons 4 and 5
+[ 75201.107] (**) evdev: eGalax Inc. USB TouchController: EmulateWheelButton: 4, EmulateWheelInertia: 10, EmulateWheelTimeout: 200
+[ 75201.107] (**) Option "config_info" "udev:/sys/devices/pci0000:00/0000:00:08.1/0000:07:00.3/usb3/3-2/3-2:1.0/0003:0EEF:0001.000F/input/input59/event18"
+[ 75201.107] (II) XINPUT: Adding extended input device "eGalax Inc. USB TouchController" (type: TOUCHSCREEN, id 12)
+[ 75201.107] (II) evdev: eGalax Inc. USB TouchController: initialized for absolute axes.
+[ 75201.107] (**) eGalax Inc. USB TouchController: (accel) keeping acceleration scheme 1
+[ 75201.107] (**) eGalax Inc. USB TouchController: (accel) acceleration profile 0
+[ 75201.107] (**) eGalax Inc. USB TouchController: (accel) acceleration factor: 2.000
+[ 75201.108] (**) eGalax Inc. USB TouchController: (accel) acceleration threshold: 4
+[ 75201.109] (II) config/udev: Adding input device eGalax Inc. USB TouchController Touchscreen (/dev/input/event19)
+[ 75201.109] (**) eGalax Inc. USB TouchController Touchscreen: Applying InputClass "libinput tablet catchall"
+[ 75201.109] (**) eGalax Inc. USB TouchController Touchscreen: Applying InputClass "eGalax usbhid class"
+[ 75201.109] (II) Using input driver 'evdev' for 'eGalax Inc. USB TouchController Touchscreen'
+[ 75201.109] (**) eGalax Inc. USB TouchController Touchscreen: always reports core events
+[ 75201.109] (**) evdev: eGalax Inc. USB TouchController Touchscreen: Device: "/dev/input/event19"
+[ 75201.109] (--) evdev: eGalax Inc. USB TouchController Touchscreen: Vendor 0xeef Product 0x1
+[ 75201.109] (--) evdev: eGalax Inc. USB TouchController Touchscreen: Found absolute axes
+[ 75201.109] (--) evdev: eGalax Inc. USB TouchController Touchscreen: Found x and y absolute axes
+[ 75201.109] (--) evdev: eGalax Inc. USB TouchController Touchscreen: Found absolute tablet.
+[ 75201.109] (II) evdev: eGalax Inc. USB TouchController Touchscreen: Configuring as tablet
+[ 75201.109] (**) evdev: eGalax Inc. USB TouchController Touchscreen: YAxisMapping: buttons 4 and 5
+[ 75201.109] (**) evdev: eGalax Inc. USB TouchController Touchscreen: EmulateWheelButton: 4, EmulateWheelInertia: 10, EmulateWheelTimeout: 200
+[ 75201.109] (**) Option "config_info" "udev:/sys/devices/pci0000:00/0000:00:08.1/0000:07:00.3/usb3/3-2/3-2:1.0/0003:0EEF:0001.000F/input/input60/event19"
+[ 75201.109] (II) XINPUT: Adding extended input device "eGalax Inc. USB TouchController Touchscreen" (type: TABLET, id 17)
+[ 75201.109] (II) evdev: eGalax Inc. USB TouchController Touchscreen: initialized for absolute axes.
+[ 75201.109] (**) eGalax Inc. USB TouchController Touchscreen: (accel) keeping acceleration scheme 1
+[ 75201.109] (**) eGalax Inc. USB TouchController Touchscreen: (accel) acceleration profile 0
+[ 75201.109] (**) eGalax Inc. USB TouchController Touchscreen: (accel) acceleration factor: 2.000
+[ 75201.109] (**) eGalax Inc. USB TouchController Touchscreen: (accel) acceleration threshold: 4
