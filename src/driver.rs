@@ -1,5 +1,8 @@
 use crate::protocol::{Packet, ParsePacketError, RawPacket, RAW_PACKET_LEN};
 use crate::{dimX, dimY, Point};
+use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_REL, EV_SYN};
+use evdev_rs::{Device, DeviceWrapper, InputEvent, ReadFlag, TimeVal, UInputDevice, UninitDevice};
+use std::time::{self, SystemTime};
 use std::{error, fmt, io};
 
 #[derive(Debug, PartialEq)]
@@ -45,6 +48,55 @@ impl Driver {
 
         changes
     }
+
+    /// copied from evdev-rs' vmouse.rs
+    fn get_virtual_device() -> Result<UInputDevice, EgalaxError> {
+        // Create virtual device
+        let u = UninitDevice::new().ok_or(EgalaxError::DeviceError)?;
+
+        // Setup device
+        // per: https://01.org/linuxgraphics/gfx-docs/drm/input/uinput.html#mouse-movements
+
+        u.set_name("Egalax Virtual Mouse");
+        u.set_bustype(BusType::BUS_USB as u16);
+        u.set_vendor_id(0x0eef);
+        u.set_product_id(0xcafe);
+
+        // Note mouse keys have to be enabled for this to be detected
+        // as a usable device, see: https://stackoverflow.com/a/64559658/6074942
+        u.enable_event_type(&EventType::EV_KEY)?;
+        u.enable_event_code(&EventCode::EV_KEY(EV_KEY::BTN_TOUCH), None)?;
+
+        u.enable_event_type(&EventType::EV_ABS)?;
+        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_X), None)?;
+        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_Y), None)?;
+
+        // TODO do we need MSC_SCAN?
+        u.enable_event_code(&EventCode::EV_SYN(EV_SYN::SYN_REPORT), None)?;
+
+        // Attempt to create UInputDevice from UninitDevice
+        UInputDevice::create_from_device(&u).map_err(EgalaxError::IOError)
+    }
+
+    fn send_event(&self, vm: &UInputDevice, changes: &[ChangeSet]) -> Result<(), EgalaxError> {
+        println!("Sending event {:#?}", changes);
+        let time = SystemTime::now()
+            .try_into()
+            .map_err(EgalaxError::TimeError)?;
+
+        for change in changes.iter() {
+            let event = change.to_input_event(&self.monitor_info, &time)?;
+            vm.write_event(&event)?;
+        }
+
+        vm.write_event(&InputEvent {
+            time,
+            event_code: EventCode::EV_SYN(EV_SYN::SYN_REPORT),
+            value: 0,
+        })?;
+
+        Ok(())
+    }
 }
 
 /// Changes for which we need to generate evdev events after we processed a packet
@@ -58,9 +110,26 @@ enum ChangeSet {
 }
 
 impl ChangeSet {
-    fn send_event(changes: &[ChangeSet]) -> Result<(), EgalaxError> {
-        println!("Sending event {:#?}", changes);
-        Ok(())
+    fn to_input_event(
+        &self,
+        monitor_info: &MonitorInfo,
+        time: &TimeVal,
+    ) -> Result<InputEvent, EgalaxError> {
+        let (code, value) = match self {
+            ChangeSet::Pressed => (EventCode::EV_KEY(EV_KEY::BTN_TOUCH), 1),
+            ChangeSet::Released => (EventCode::EV_KEY(EV_KEY::BTN_TOUCH), 0),
+            ChangeSet::ChangedX(x) => {
+                // TODO calculate mouse position based on bounds
+                let mouse_x = 500;
+                (EventCode::EV_ABS(EV_ABS::ABS_X), mouse_x)
+            }
+            ChangeSet::ChangedY(y) => {
+                let mouse_y = 500;
+                (EventCode::EV_ABS(EV_ABS::ABS_Y), mouse_y)
+            }
+        };
+
+        Ok(InputEvent::new(time, &code, value))
     }
 }
 
@@ -120,6 +189,8 @@ impl Default for MonitorInfo {
 #[derive(Debug)]
 pub enum EgalaxError {
     UnexpectedEOF,
+    DeviceError,
+    TimeError(time::SystemTimeError),
     ParseError(ParsePacketError),
     IOError(io::Error),
 }
@@ -140,10 +211,13 @@ impl error::Error for EgalaxError {}
 
 impl fmt::Display for EgalaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO match on self or *self?
         let description = match self {
             EgalaxError::ParseError(e) => return e.fmt(f),
             EgalaxError::IOError(e) => return e.fmt(f),
+            EgalaxError::TimeError(e) => return e.fmt(f),
             EgalaxError::UnexpectedEOF => "Unexpected EOF",
+            EgalaxError::DeviceError => "Device Error",
         };
         f.write_str(&description)
     }
@@ -174,14 +248,16 @@ pub fn print_packets(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
     process_packets(stream, &mut |packet| Ok(println!("{:#?}", packet)))
 }
 
+/// Send evdev events for a virtual mouse based on the packets in the given stream
 pub fn virtual_mouse(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
     let ul_bounds = (300, 300).into();
     let lr_bounds = (3800, 3800).into();
     let mut state = Driver::new(ul_bounds, lr_bounds);
+    let vm = Driver::get_virtual_device()?;
 
     let mut process_packet = |packet| {
         let changes = state.update(packet);
-        ChangeSet::send_event(&changes)
+        state.send_event(&vm, &changes)
     };
     process_packets(stream, &mut process_packet)
 }

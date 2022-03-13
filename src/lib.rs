@@ -58,6 +58,12 @@ impl<T: Dim> From<i32> for udim<T> {
     }
 }
 
+impl<T: Dim> From<&udim<T>> for i32 {
+    fn from(d: &udim<T>) -> Self {
+        d.1 as i32
+    }
+}
+
 impl From<(i32, i32)> for Point {
     fn from((x, y): (i32, i32)) -> Self {
         Point {
