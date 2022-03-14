@@ -6,6 +6,7 @@ use evdev_rs::{Device, DeviceWrapper, InputEvent, ReadFlag, UInputDevice, Uninit
 const MOUSE_STEP_X: i32 = 10;
 const MOUSE_STEP_Y: i32 = 10;
 
+// A translation of the virtual mouse uinput example for the "evdev-rs" package.
 fn main() -> Result<(), std::io::Error> {
     // Parse command line arguments
     let mut args = std::env::args();

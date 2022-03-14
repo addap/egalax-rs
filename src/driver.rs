@@ -1,9 +1,11 @@
 use crate::protocol::{Packet, ParsePacketError, RawPacket, RAW_PACKET_LEN};
 use crate::{dimX, dimY, Point};
-use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_REL, EV_SYN};
-use evdev_rs::{Device, DeviceWrapper, InputEvent, ReadFlag, TimeVal, UInputDevice, UninitDevice};
-use std::time::{self, SystemTime};
-use std::{error, fmt, io};
+use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_SYN};
+use evdev_rs::{
+    AbsInfo, Device, DeviceWrapper, InputEvent, ReadFlag, TimeVal, UInputDevice, UninitDevice,
+};
+use std::time::{self, Duration, SystemTime};
+use std::{error, fmt, io, thread};
 
 #[derive(Debug, PartialEq)]
 struct Driver {
@@ -49,8 +51,8 @@ impl Driver {
         changes
     }
 
-    /// copied from evdev-rs' vmouse.rs
-    fn get_virtual_device() -> Result<UInputDevice, EgalaxError> {
+    // copied from evdev-rs' vmouse.rs
+    fn get_virtual_device(&self) -> Result<UInputDevice, EgalaxError> {
         // Create virtual device
         let u = UninitDevice::new().ok_or(EgalaxError::DeviceError)?;
 
@@ -67,30 +69,52 @@ impl Driver {
         u.enable_event_type(&EventType::EV_KEY)?;
         u.enable_event_code(&EventCode::EV_KEY(EV_KEY::BTN_TOUCH), None)?;
 
+        let abs_info_x: AbsInfo = AbsInfo {
+            value: 0,
+            minimum: self.ul_bounds.x.value().into(),
+            maximum: self.lr_bounds.x.value().into(),
+            fuzz: 0,
+            flat: 0,
+            resolution: 0,
+        };
+
+        let abs_info_y: AbsInfo = AbsInfo {
+            value: 0,
+            minimum: self.ul_bounds.y.value().into(),
+            maximum: self.lr_bounds.y.value().into(),
+            fuzz: 0,
+            flat: 0,
+            resolution: 0,
+        };
+
         u.enable_event_type(&EventType::EV_ABS)?;
-        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_X), None)?;
-        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_Y), None)?;
+        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_X), Some(&abs_info_x))?;
+        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_Y), Some(&abs_info_y))?;
 
         // TODO do we need MSC_SCAN?
         u.enable_event_code(&EventCode::EV_SYN(EV_SYN::SYN_REPORT), None)?;
 
         // Attempt to create UInputDevice from UninitDevice
-        UInputDevice::create_from_device(&u).map_err(EgalaxError::IOError)
+        Ok(UInputDevice::create_from_device(&u)
+            .map_err(EgalaxError::IOError)
+            .unwrap())
     }
 
     fn send_event(&self, vm: &UInputDevice, changes: &[ChangeSet]) -> Result<(), EgalaxError> {
-        println!("Sending event {:#?}", changes);
-        let time = SystemTime::now()
-            .try_into()
-            .map_err(EgalaxError::TimeError)?;
+        // println!("Sending event {:#?}", changes);
+        // let time = SystemTime::now()
+        //     .try_into()
+        //     .map_err(EgalaxError::TimeError)?;
+
+        let ZERO = TimeVal::new(0, 0);
 
         for change in changes.iter() {
-            let event = change.to_input_event(&self.monitor_info, &time)?;
+            let event = change.to_input_event(&self.monitor_info, &ZERO)?;
             vm.write_event(&event)?;
         }
 
         vm.write_event(&InputEvent {
-            time,
+            time: ZERO,
             event_code: EventCode::EV_SYN(EV_SYN::SYN_REPORT),
             value: 0,
         })?;
@@ -118,18 +142,11 @@ impl ChangeSet {
         let (code, value) = match self {
             ChangeSet::Pressed => (EventCode::EV_KEY(EV_KEY::BTN_TOUCH), 1),
             ChangeSet::Released => (EventCode::EV_KEY(EV_KEY::BTN_TOUCH), 0),
-            ChangeSet::ChangedX(x) => {
-                // TODO calculate mouse position based on bounds
-                let mouse_x = 500;
-                (EventCode::EV_ABS(EV_ABS::ABS_X), mouse_x)
-            }
-            ChangeSet::ChangedY(y) => {
-                let mouse_y = 500;
-                (EventCode::EV_ABS(EV_ABS::ABS_Y), mouse_y)
-            }
+            ChangeSet::ChangedX(x) => (EventCode::EV_ABS(EV_ABS::ABS_X), x.value()),
+            ChangeSet::ChangedY(y) => (EventCode::EV_ABS(EV_ABS::ABS_Y), y.value()),
         };
 
-        Ok(InputEvent::new(time, &code, value))
+        Ok(InputEvent::new(time, &code, value as i32))
     }
 }
 
@@ -232,6 +249,7 @@ where
     let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
 
     loop {
+        println!("read next packet");
         let read_bytes = stream.read(&mut raw_packet)?;
         if read_bytes == 0 {
             return Ok(());
@@ -240,6 +258,7 @@ where
         }
         let packet = Packet::try_from(raw_packet)?;
         f(packet)?;
+        thread::sleep(Duration::from_secs(1));
     }
 }
 
@@ -250,10 +269,10 @@ pub fn print_packets(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
 
 /// Send evdev events for a virtual mouse based on the packets in the given stream
 pub fn virtual_mouse(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
-    let ul_bounds = (300, 300).into();
-    let lr_bounds = (3800, 3800).into();
+    let ul_bounds = (30, 60).into();
+    let lr_bounds = (4040, 4035).into();
     let mut state = Driver::new(ul_bounds, lr_bounds);
-    let vm = Driver::get_virtual_device()?;
+    let vm = state.get_virtual_device()?;
 
     let mut process_packet = |packet| {
         let changes = state.update(packet);

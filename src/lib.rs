@@ -32,6 +32,12 @@ pub struct Point {
     pub y: dimY,
 }
 
+impl<T: Dim> udim<T> {
+    pub fn value(&self) -> UdimRepr {
+        self.1
+    }
+}
+
 impl<T: Dim> fmt::Display for udim<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.1.fmt(f)
