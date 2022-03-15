@@ -36,6 +36,21 @@ impl<T: Dim> udim<T> {
     pub fn value(&self) -> UdimRepr {
         self.1
     }
+
+    pub fn linear_factor(&self, a: udim<T>, b: udim<T>) -> f64 {
+        // solve for t
+        // self = t * a + (1 - t) * b
+        // => t = (b - self)/(b - a)
+        println!("a: {}\tb: {}\tc: {}", a, b, self);
+        let t = ((b.value() - self.value()) as f64) / ((b.value() - a.value()) as f64);
+        println!("linear factor: {}", t);
+        t
+    }
+
+    pub fn lerp(a: udim<T>, b: udim<T>, t: f64) -> udim<T> {
+        // TODO clamped arithmetic so that we cannot end up with negative values
+        ((a.value() as f64) * t + (b.value() as f64) * (1.0 - t)).into()
+    }
 }
 
 impl<T: Dim> fmt::Display for udim<T> {
@@ -60,6 +75,14 @@ impl<T: Dim> From<u16> for udim<T> {
 /// Just for the tests where we use string literals
 impl<T: Dim> From<i32> for udim<T> {
     fn from(c: i32) -> Self {
+        udim(PhantomData, c as UdimRepr)
+    }
+}
+
+/// Used in Lerp functions
+/// TODO maybe round
+impl<T: Dim> From<f64> for udim<T> {
+    fn from(c: f64) -> Self {
         udim(PhantomData, c as UdimRepr)
     }
 }
