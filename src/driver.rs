@@ -250,15 +250,9 @@ where
 
     loop {
         println!("read next packet");
-        let read_bytes = stream.read(&mut raw_packet)?;
-        if read_bytes == 0 {
-            return Ok(());
-        } else if read_bytes < RAW_PACKET_LEN {
-            return Err(EgalaxError::UnexpectedEOF);
-        }
+        stream.read_exact(&mut raw_packet)?;
         let packet = Packet::try_from(raw_packet)?;
         f(packet)?;
-        thread::sleep(Duration::from_secs(1));
     }
 }
 
@@ -268,15 +262,17 @@ pub fn print_packets(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
 }
 
 /// Send evdev events for a virtual mouse based on the packets in the given stream
-pub fn virtual_mouse(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
+pub fn virtual_mouse(mut stream: impl io::Read) -> Result<(), EgalaxError> {
     let ul_bounds = (30, 60).into();
     let lr_bounds = (4040, 4035).into();
     let mut state = Driver::new(ul_bounds, lr_bounds);
     let vm = state.get_virtual_device()?;
+    thread::sleep(Duration::from_secs(1));
 
     let mut process_packet = |packet| {
+        println!("processing packet");
         let changes = state.update(packet);
         state.send_event(&vm, &changes)
     };
-    process_packets(stream, &mut process_packet)
+    process_packets(&mut stream, &mut process_packet)
 }

@@ -1,14 +1,14 @@
-extern crate nix;
-
 use nix::sys::stat;
 use nix::unistd::mkfifo;
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
+use std::path::PathBuf;
 use std::str;
 use std::thread;
 use std::time;
+use tempdir::TempDir;
 
-fn sender(path: &str) {
+fn sender(path: PathBuf) {
     let mut f = OpenOptions::new().write(true).open(path).unwrap();
     loop {
         f.write("My Data".as_bytes()).unwrap();
@@ -16,7 +16,7 @@ fn sender(path: &str) {
     }
 }
 
-fn receiver(path: &str) {
+fn receiver(path: PathBuf) {
     let mut f = File::open(path).unwrap();
     let mut buf = [0; 10];
     loop {
@@ -27,11 +27,14 @@ fn receiver(path: &str) {
 }
 
 fn main() {
-    let path = "/tmp/myfifo";
-    mkfifo(path, stat::Mode::S_IRWXU).unwrap();
+    let tmp_dir = TempDir::new("test_fifo").unwrap();
+    let path = tmp_dir.path().join("myfifo");
+    let path1 = path.clone();
+    let path2 = path.clone();
+    mkfifo(&path, stat::Mode::S_IRWXU).unwrap();
 
-    thread::spawn(|| sender(path));
-    thread::spawn(|| receiver(path));
+    thread::spawn(|| sender(path1));
+    thread::spawn(|| receiver(path2));
 
     loop {
         thread::sleep(time::Duration::from_secs(10));
