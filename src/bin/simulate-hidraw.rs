@@ -24,7 +24,7 @@ fn virtual_sender(data: Vec<u8>, path: PathBuf) {
         } else {
             break;
         }
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_millis(500));
     }
 }
 
@@ -35,10 +35,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let path = tmp_dir.path().join("egalax.fifo");
     let path1 = path.clone();
     println!("{:?}", path);
+    // make a fifo to push usb data in from another thread
     mkfifo(&path, stat::Mode::S_IRWXU).unwrap();
-    thread::sleep(Duration::from_secs(1));
 
-    // a.d. the opening of both ends of the fifo is more complicated than I originally though.
+    // a.d. the opening of both ends of the fifo is more complicated than I originally thought.
     // as explained in this answer https://stackoverflow.com/a/11637823
     // we want to read blocking, so we need to open reader as blocking.
     // therefore we need to open the writer in another thread, so that they can unblock each other.

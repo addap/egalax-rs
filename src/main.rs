@@ -1,21 +1,13 @@
-use egalax_rs::protocol::Packet;
-use std::error;
+use egalax_rs::driver::virtual_mouse;
 use std::result::Result;
+use std::{error, fs::OpenOptions};
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    let packet = Packet::try_from([0x02, 0x03, 0x3b, 0x01, 0x32, 0x01])?;
-    println!(
-        "Finger is {} at ({}, {}) with resolution {}",
-        if packet.is_touching() {
-            "touching"
-        } else {
-            "not touching"
-        },
-        packet.x(),
-        packet.y(),
-        packet.res()
-    );
-    println!("{:#?}", packet);
+    let node_path = std::env::args()
+        .nth(1)
+        .expect("usage: sudo ./target/debug/egalax-rs /dev/hidraw0");
+    let device_node = OpenOptions::new().read(true).open(&node_path).unwrap();
 
+    virtual_mouse(device_node)?;
     Ok(())
 }
