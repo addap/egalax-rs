@@ -31,7 +31,6 @@ impl Driver {
     /// Update the internal state of the driver.
     /// Technically, Linux' input subsystem already filters out duplicate events so we could immediately turn the packet into InputEvent objects.
     /// But to support right clicks we must maintain some state.
-    // TODO only do right-click if not moving much while touching
     fn update(&mut self, packet: Packet) -> Vec<InputEvent> {
         let mut events = EventGen::new(packet.time());
 

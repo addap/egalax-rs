@@ -85,20 +85,6 @@ pub struct MonitorConfig {
     pub touch_event_lr: Point,
 }
 
-// TODO need to get monitor dimensions from xrandr or config file
-impl Default for MonitorConfig {
-    fn default() -> Self {
-        MonitorConfig {
-            screen_space_ul: (0, 0).into(),
-            screen_space_lr: (3200, 1080).into(),
-            monitor_area_ul: (1920, 0).into(),
-            monitor_area_lr: (3200, 1024).into(),
-            touch_event_ul: (300, 300).into(),
-            touch_event_lr: (3800, 3800).into(),
-        }
-    }
-}
-
 /// An axis-aligned bounding box consisting of an upper left corner (x1, y1) and lower right corner (x2, y2)
 #[derive(Debug, PartialEq)]
 struct AABB {
