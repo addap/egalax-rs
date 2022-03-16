@@ -2,17 +2,32 @@
 
 use std::{error, fmt};
 
-use crate::{dimX, dimY, DimX, DimY, Point, UdimRepr};
+use evdev_rs::TimeVal;
+
+use crate::{dimX, dimY, Point, UdimRepr};
 
 /// A representation of a packet sent over USB
 #[derive(PartialEq, Debug)]
 pub struct Packet {
+    time: Option<TimeVal>,
     is_touching: bool,
     p: Point,
     res: u8,
 }
 
 impl Packet {
+    pub fn with_time(mut self, time: TimeVal) -> Self {
+        self.time = Some(time);
+        self
+    }
+
+    pub fn time(&self) -> TimeVal {
+        if let Some(time) = self.time {
+            time
+        } else {
+            TimeVal::new(0, 0)
+        }
+    }
     pub fn is_touching(&self) -> bool {
         self.is_touching
     }
@@ -74,6 +89,7 @@ impl TryFrom<RawPacket> for Packet {
         }
 
         Ok(Packet {
+            time: None,
             is_touching,
             p: (x, y).into(),
             res,
@@ -103,17 +119,22 @@ mod tests {
 
     use super::*;
 
+    fn zero() -> TimeVal {
+        TimeVal::new(0, 0)
+    }
+
     #[test]
     fn test_parse_touch_upper_left() {
         let raw_packet: RawPacket = [0x02, 0x03, 0x3b, 0x01, 0x32, 0x01];
 
         assert_eq!(
             Ok(Packet {
+                time: Some(zero()),
                 is_touching: true,
                 p: (306, 315).into(),
                 res: 12
             }),
-            Packet::try_from(raw_packet)
+            Packet::try_from(raw_packet).map(|p| p.with_time(zero()))
         );
     }
 
@@ -123,11 +144,12 @@ mod tests {
 
         assert_eq!(
             Ok(Packet {
+                time: Some(zero()),
                 is_touching: false,
                 p: (313, 309).into(),
                 res: 12
             }),
-            Packet::try_from(raw_packet)
+            Packet::try_from(raw_packet).map(|p| p.with_time(zero()))
         );
     }
 
