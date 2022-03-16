@@ -53,6 +53,22 @@ impl<T: Dim> udim<T> {
     }
 }
 
+impl Point {
+    pub fn euc_distance_to(&self, other: &Self) -> f64 {
+        let dx = ((other.x.value() as f64) - (self.x.value() as f64)).abs();
+        let dy = ((other.y.value() as f64) - (self.y.value() as f64)).abs();
+
+        (dx.powi(2) + dy.powi(2)).sqrt()
+    }
+
+    pub fn manhat_distance_to(&self, other: &Self) -> i32 {
+        let dx = (other.x.value() - self.x.value()).abs();
+        let dy = (other.y.value() - self.y.value()).abs();
+
+        dx + dy
+    }
+}
+
 impl<T: Dim> fmt::Display for udim<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.1.fmt(f)

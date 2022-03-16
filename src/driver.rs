@@ -7,6 +7,8 @@ use evdev_rs::{
 use std::time::{self, Duration, Instant, SystemTime};
 use std::{error, fmt, io, thread};
 
+// TODO test values for has_moved thresh
+const HAS_MOVED_THRESHOLD: f64 = 30.0;
 const RIGHT_CLICK_THRESHOLD: Duration = Duration::from_millis(1500);
 const BTN_LEFT: EV_KEY = EV_KEY::BTN_TOUCH;
 const BTN_RIGHT: EV_KEY = EV_KEY::BTN_STYLUS2;
@@ -35,28 +37,36 @@ impl Driver {
         match (self.touch_state.is_touching, packet.is_touching()) {
             (false, false) => {}
             (true, false) => {
-                self.touch_state.touch_start = None;
-                // self.touch_state.touch_point = None;
                 events.emit_btn_release(BTN_LEFT);
 
                 if self.touch_state.is_right_click {
-                    self.touch_state.is_right_click = false;
                     events.emit_btn_release(BTN_RIGHT);
                 }
+                self.touch_state.reset();
             }
             (false, true) => {
-                self.touch_state.touch_start = Some(Instant::now());
-                // self.touch_state.touch_point = Some((packet.x(), packet.y()).into());
+                self.touch_state.touch_start_time = Some(Instant::now());
+                self.touch_state.touch_origin = Some(Point::from((packet.x(), packet.y())));
                 events.emit_btn_press(BTN_LEFT);
             }
             (true, true) => {
-                if !self.touch_state.is_right_click {
-                    let touch_start = self.touch_state.touch_start.unwrap();
-                    let time_touching = Instant::now().duration_since(touch_start);
+                if !self.touch_state.is_right_click && !self.touch_state.has_moved {
+                    // check if during press we moved too far away from origin and diable right-click
+                    let touch_origin = self.touch_state.touch_origin.as_ref().unwrap();
+                    let touch_distance =
+                        touch_origin.euc_distance_to(&Point::from((packet.x(), packet.y())));
 
-                    if time_touching > RIGHT_CLICK_THRESHOLD {
-                        self.touch_state.is_right_click = true;
-                        events.emit_btn_press(BTN_RIGHT);
+                    if touch_distance > HAS_MOVED_THRESHOLD {
+                        self.touch_state.has_moved = true;
+                    } else {
+                        // check if we pressed long enough to trigger a right-click
+                        let touch_start_time = self.touch_state.touch_start_time.unwrap();
+                        let time_touching = Instant::now().duration_since(touch_start_time);
+
+                        if time_touching > RIGHT_CLICK_THRESHOLD {
+                            self.touch_state.is_right_click = true;
+                            events.emit_btn_press(BTN_RIGHT);
+                        }
                     }
                 }
             }
@@ -200,9 +210,10 @@ impl EventGen {
 struct TouchState {
     is_touching: bool,
     is_right_click: bool,
+    has_moved: bool,
     p: Point,
-    touch_start: Option<Instant>,
-    // touch_point: Option<Point>,
+    touch_start_time: Option<Instant>,
+    touch_origin: Option<Point>,
 }
 
 impl TouchState {
@@ -225,6 +236,13 @@ impl TouchState {
     pub fn set_y(&mut self, y: dimY) -> () {
         self.p.y = y;
     }
+
+    pub fn reset(&mut self) {
+        self.is_right_click = false;
+        self.has_moved = false;
+        self.touch_start_time = None;
+        self.touch_origin = None;
+    }
 }
 
 impl Default for TouchState {
@@ -232,9 +250,10 @@ impl Default for TouchState {
         TouchState {
             is_touching: false,
             is_right_click: false,
+            has_moved: false,
             p: (0, 0).into(),
-            touch_start: None,
-            // touch_point: None,
+            touch_start_time: None,
+            touch_origin: None,
         }
     }
 }
