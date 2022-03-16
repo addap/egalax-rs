@@ -48,6 +48,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let reader = OpenOptions::new().read(true).open(&path).unwrap();
     println!("setup complete");
 
-    virtual_mouse(reader)?;
+    virtual_mouse(reader, String::from("eDP"))?;
     Ok(())
 }

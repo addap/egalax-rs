@@ -1,3 +1,4 @@
+use crate::config::{MonitorConfig, MonitorConfigBuilder};
 use crate::protocol::{Packet, ParsePacketError, RawPacket, RAW_PACKET_LEN};
 use crate::{dimX, dimY, Point};
 use evdev_rs::enums::{BusType, EventCode, EventType, InputProp, EV_ABS, EV_KEY, EV_SYN};
@@ -6,6 +7,7 @@ use evdev_rs::{
 };
 use std::time::{self, Duration, Instant, SystemTime};
 use std::{error, fmt, io, thread};
+use xrandr::XrandrError;
 
 // TODO test values for has_moved thresh
 const HAS_MOVED_THRESHOLD: f64 = 30.0;
@@ -20,10 +22,10 @@ struct Driver {
 }
 
 impl Driver {
-    fn new() -> Self {
+    fn new(monitor_cfg: MonitorConfig) -> Self {
         Self {
             touch_state: TouchState::default(),
-            monitor_cfg: MonitorConfig::default(),
+            monitor_cfg,
         }
     }
 
@@ -258,39 +260,15 @@ impl Default for TouchState {
     }
 }
 
-/// Parameters needed to translate the touch event coordinates coming from the monitor to coordinates in X's screen space.
-/// a.d. TODO we might be able to remove some coordinates if we set the resolution in the uinput absinfo
-#[derive(Debug, PartialEq)]
-struct MonitorConfig {
-    screen_space_ul: Point,
-    screen_space_lr: Point,
-    monitor_area_ul: Point,
-    monitor_area_lr: Point,
-    touch_event_ul: Point,
-    touch_event_lr: Point,
-}
-
-// TODO need to get monitor dimensions from xrandr or config file
-impl Default for MonitorConfig {
-    fn default() -> Self {
-        MonitorConfig {
-            screen_space_ul: (0, 0).into(),
-            screen_space_lr: (3200, 1080).into(),
-            monitor_area_ul: (1920, 0).into(),
-            monitor_area_lr: (3200, 1024).into(),
-            touch_event_ul: (300, 300).into(),
-            touch_event_lr: (3800, 3800).into(),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum EgalaxError {
     UnexpectedEOF,
     DeviceError,
+    MonitorNotFound(String),
     TimeError(time::SystemTimeError),
     ParseError(ParsePacketError),
     IOError(io::Error),
+    Xrandr(xrandr::XrandrError),
 }
 
 impl From<io::Error> for EgalaxError {
@@ -305,6 +283,12 @@ impl From<ParsePacketError> for EgalaxError {
     }
 }
 
+impl From<xrandr::XrandrError> for EgalaxError {
+    fn from(e: xrandr::XrandrError) -> Self {
+        Self::Xrandr(e)
+    }
+}
+
 impl error::Error for EgalaxError {}
 
 impl fmt::Display for EgalaxError {
@@ -314,8 +298,10 @@ impl fmt::Display for EgalaxError {
             EgalaxError::ParseError(e) => return e.fmt(f),
             EgalaxError::IOError(e) => return e.fmt(f),
             EgalaxError::TimeError(e) => return e.fmt(f),
-            EgalaxError::UnexpectedEOF => "Unexpected EOF",
-            EgalaxError::DeviceError => "Device Error",
+            EgalaxError::Xrandr(e) => return e.fmt(f),
+            EgalaxError::UnexpectedEOF => String::from("Unexpected EOF"),
+            EgalaxError::DeviceError => String::from("Device Error"),
+            EgalaxError::MonitorNotFound(name) => format!("Monitor \"{}\" not found", name),
         };
         f.write_str(&description)
     }
@@ -343,8 +329,9 @@ pub fn print_packets(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
 }
 
 /// Send evdev events for a virtual mouse based on the packets in the given stream
-pub fn virtual_mouse(mut stream: impl io::Read) -> Result<(), EgalaxError> {
-    let mut driver = Driver::new();
+pub fn virtual_mouse(mut stream: impl io::Read, name: String) -> Result<(), EgalaxError> {
+    let monitor_cfg = MonitorConfigBuilder::new(name)?.build()?;
+    let mut driver = Driver::new(monitor_cfg);
     let vm = driver.get_virtual_device()?;
 
     let mut process_packet = |packet| {
