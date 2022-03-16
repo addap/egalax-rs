@@ -7,7 +7,6 @@ use evdev_rs::{
 };
 use std::time::{self, Duration, Instant, SystemTime};
 use std::{error, fmt, io, thread};
-use xrandr::XrandrError;
 
 // TODO test values for has_moved thresh
 const HAS_MOVED_THRESHOLD: f64 = 30.0;
@@ -329,8 +328,10 @@ pub fn print_packets(stream: &mut impl io::Read) -> Result<(), EgalaxError> {
 }
 
 /// Send evdev events for a virtual mouse based on the packets in the given stream
-pub fn virtual_mouse(mut stream: impl io::Read, name: String) -> Result<(), EgalaxError> {
-    let monitor_cfg = MonitorConfigBuilder::new(name)?.build()?;
+pub fn virtual_mouse(
+    mut stream: impl io::Read,
+    monitor_cfg: MonitorConfig,
+) -> Result<(), EgalaxError> {
     let mut driver = Driver::new(monitor_cfg);
     let vm = driver.get_virtual_device()?;
 

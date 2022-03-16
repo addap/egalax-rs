@@ -1,4 +1,4 @@
-use egalax_rs::driver::virtual_mouse;
+use egalax_rs::{config::MonitorConfigBuilder, driver::virtual_mouse};
 use nix::{libc, sys::stat, unistd::mkfifo};
 use std::{
     error,
@@ -46,8 +46,11 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     thread::spawn(move || virtual_sender(hidraw, path1));
 
     let reader = OpenOptions::new().read(true).open(&path).unwrap();
+    let monitor_cfg = MonitorConfigBuilder::new()?
+        .with_name(Some(String::from("eDP")))
+        .build()?;
     println!("setup complete");
 
-    virtual_mouse(reader, String::from("eDP"))?;
+    virtual_mouse(reader, monitor_cfg)?;
     Ok(())
 }

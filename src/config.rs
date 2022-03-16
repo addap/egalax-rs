@@ -8,21 +8,27 @@ use std::{
 use xrandr::{Monitor, XHandle};
 
 pub struct MonitorConfigBuilder {
-    name: String,
+    name: Option<String>,
     monitors: Vec<Monitor>,
 }
 
 impl MonitorConfigBuilder {
-    pub fn new(name: String) -> Result<Self, EgalaxError> {
+    pub fn new() -> Result<Self, EgalaxError> {
         let monitors = XHandle::open()?.monitors()?;
-        Ok(MonitorConfigBuilder { name, monitors })
+        Ok(MonitorConfigBuilder {
+            name: None,
+            monitors,
+        })
+    }
+
+    pub fn with_name(mut self, name: Option<String>) -> Self {
+        self.name = name;
+        self
     }
 
     pub fn build(self) -> Result<MonitorConfig, EgalaxError> {
         let screen_space = self.compute_screen_space();
-        let monitor_area = self
-            .get_monitor_area()
-            .ok_or(EgalaxError::MonitorNotFound(self.name))?;
+        let monitor_area = self.get_monitor_area()?;
 
         Ok(MonitorConfig {
             screen_space_ul: (screen_space.x1, screen_space.y1).into(),
@@ -42,14 +48,28 @@ impl MonitorConfigBuilder {
             .fold(AABB::new(), <AABB as Add>::add)
     }
 
-    fn get_monitor_area(&self) -> Option<AABB> {
-        self.monitors.iter().find_map(|monitor| {
-            if monitor.name == self.name {
-                Some(AABB::from(monitor))
-            } else {
-                None
-            }
-        })
+    fn get_monitor_area(&self) -> Result<AABB, EgalaxError> {
+        // If we have a name we look for a monitor with that name
+        // otherwise we just take the primary monitor, which must exist.
+        if let Some(name) = self.name.clone() {
+            self.monitors
+                .iter()
+                .find_map(|monitor| {
+                    if monitor.name == name {
+                        Some(AABB::from(monitor))
+                    } else {
+                        None
+                    }
+                })
+                .ok_or(EgalaxError::MonitorNotFound(name))
+        } else {
+            let primary = self
+                .monitors
+                .iter()
+                .find(|monitor| monitor.is_primary)
+                .unwrap();
+            Ok(AABB::from(primary))
+        }
     }
 }
 
