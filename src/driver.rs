@@ -1,15 +1,15 @@
 use crate::protocol::{Packet, ParsePacketError, RawPacket, RAW_PACKET_LEN};
 use crate::{dimX, dimY, Point};
-use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_SYN};
+use evdev_rs::enums::{BusType, EventCode, EventType, InputProp, EV_ABS, EV_KEY, EV_SYN};
 use evdev_rs::{
     AbsInfo, Device, DeviceWrapper, InputEvent, ReadFlag, TimeVal, UInputDevice, UninitDevice,
 };
-use input_linux::GenericEvent;
-use nix::libc::time_t;
 use std::time::{self, Duration, Instant, SystemTime};
 use std::{error, fmt, io, thread};
 
 const RIGHT_CLICK_THRESHOLD: Duration = Duration::from_millis(1500);
+const BTN_LEFT: EV_KEY = EV_KEY::BTN_TOUCH;
+const BTN_RIGHT: EV_KEY = EV_KEY::BTN_STYLUS2;
 
 #[derive(Debug, PartialEq)]
 struct Driver {
@@ -28,46 +28,48 @@ impl Driver {
     /// Update the internal state of the driver.
     /// Technically, Linux' input subsystem already filters out duplicate events so we could immediately turn the packet into InputEvent objects.
     /// But to support right clicks we must maintain some state.
-    // TODO implement right-click if touching same spot (+- small area) for some amount of time
-    fn update(&mut self, packet: Packet) -> Vec<ChangeSet> {
-        let mut changes = Vec::new();
+    // TODO only do right-click if not moving much while touching
+    fn update(&mut self, packet: Packet) -> Vec<InputEvent> {
+        let mut events = EventGen::new(packet.time());
 
         match (self.touch_state.is_touching, packet.is_touching()) {
             (false, false) => {}
             (true, false) => {
-                // self.touch_state.touch_start = None;
-                changes.push(ChangeSet::Released);
-                // if self.touch_state.is_right_click {
-                //     self.touch_state.is_right_click = false;
-                //     changes.push(ChangeSet::ReleasedRight);
-                // }
+                self.touch_state.touch_start = None;
+                // self.touch_state.touch_point = None;
+                events.emit_btn_release(BTN_LEFT);
+
+                if self.touch_state.is_right_click {
+                    self.touch_state.is_right_click = false;
+                    events.emit_btn_release(BTN_RIGHT);
+                }
             }
             (false, true) => {
-                // self.touch_state.touch_start = Some(Instant::now());
-                changes.push(ChangeSet::Pressed);
+                self.touch_state.touch_start = Some(Instant::now());
+                // self.touch_state.touch_point = Some((packet.x(), packet.y()).into());
+                events.emit_btn_press(BTN_LEFT);
             }
             (true, true) => {
-                // let touch_start = self.touch_state.touch_start.unwrap();
-                // let time_touching = Instant::now().duration_since(touch_start);
-                // if time_touching > RIGHT_CLICK_THRESHOLD && !self.touch_state.is_right_click {
-                // self.touch_state.is_right_click = true;
-                // changes.push(ChangeSet::PressedRight);
-                // }
+                if !self.touch_state.is_right_click {
+                    let touch_start = self.touch_state.touch_start.unwrap();
+                    let time_touching = Instant::now().duration_since(touch_start);
+
+                    if time_touching > RIGHT_CLICK_THRESHOLD {
+                        self.touch_state.is_right_click = true;
+                        events.emit_btn_press(BTN_RIGHT);
+                    }
+                }
             }
         }
         self.touch_state.is_touching = packet.is_touching();
 
-        if self.touch_state.x() != packet.x() {
-            self.touch_state.set_x(packet.x());
-            changes.push(ChangeSet::ChangedX(packet.x()));
-        }
+        self.touch_state.set_x(packet.x());
+        events.emit_move_x(packet.x(), &self.monitor_cfg);
 
-        if self.touch_state.y() != packet.y() {
-            self.touch_state.set_y(packet.y());
-            changes.push(ChangeSet::ChangedY(packet.y()));
-        }
+        self.touch_state.set_y(packet.y());
+        events.emit_move_y(packet.y(), &self.monitor_cfg);
 
-        changes
+        events.finish()
     }
 
     /// Setup the virtual device with uinput
@@ -82,16 +84,18 @@ impl Driver {
         u.set_bustype(BusType::BUS_USB as u16);
         u.set_vendor_id(0x0eef);
         u.set_product_id(0xcafe);
+        u.enable_property(&InputProp::INPUT_PROP_DIRECT)?;
 
         u.enable_event_type(&EventType::EV_KEY)?;
-        u.enable_event_code(&EventCode::EV_KEY(EV_KEY::BTN_TOUCH), None)?;
-        // u.enable_event_code(&EventCode::EV_KEY(EV_KEY::BTN_RIGHT), None)?;
+        u.enable_event_code(&EventCode::EV_KEY(BTN_LEFT), None)?;
+        u.enable_event_code(&EventCode::EV_KEY(BTN_RIGHT), None)?;
 
         let abs_info_x: AbsInfo = AbsInfo {
             value: 0,
             minimum: self.monitor_cfg.screen_space_ul.x.value().into(),
             maximum: self.monitor_cfg.screen_space_lr.x.value().into(),
-            fuzz: 0,
+            // TODO test if fuzz value works as expected. should remove spurious drags when pressing long for right-click
+            fuzz: 50,
             flat: 0,
             resolution: 0,
         };
@@ -100,7 +104,7 @@ impl Driver {
             value: 0,
             minimum: self.monitor_cfg.screen_space_ul.y.value().into(),
             maximum: self.monitor_cfg.screen_space_lr.y.value().into(),
-            fuzz: 0,
+            fuzz: 50,
             flat: 0,
             resolution: 0,
         };
@@ -120,85 +124,85 @@ impl Driver {
         Ok(vm)
     }
 
-    fn send_event(&self, vm: &UInputDevice, changes: &[ChangeSet]) -> Result<(), EgalaxError> {
-        // println!("Sending event {:#?}", changes);
-        // let time = SystemTime::now()
-        //     .try_into()
-        //     .map_err(EgalaxError::TimeError)?;
-
-        let ZERO = TimeVal::new(0, 0);
-
-        for change in changes.iter() {
-            let event = change.to_input_event(&self.monitor_cfg, &ZERO)?;
-            vm.write_event(&event)?;
+    fn send_events(&self, vm: &UInputDevice, events: &[InputEvent]) -> Result<(), EgalaxError> {
+        for event in events {
+            vm.write_event(event)?;
         }
-
-        vm.write_event(&InputEvent {
-            time: ZERO,
-            event_code: EventCode::EV_SYN(EV_SYN::SYN_REPORT),
-            value: 0,
-        })?;
 
         Ok(())
     }
 }
 
-/// Changes for which we need to generate evdev events after we processed a packet
-// TODO does it make sense to collapse ChangedX & ChangedY into a Changed(T, udim<T>)? Probably not possible
-#[derive(Debug, PartialEq)]
-enum ChangeSet {
-    ChangedX(dimX),
-    ChangedY(dimY),
-    Pressed,
-    Released,
-    // PressedRight,
-    // ReleasedRight,
+struct EventGen {
+    time: TimeVal,
+    events: Vec<InputEvent>,
 }
 
-impl ChangeSet {
-    fn to_input_event(
-        &self,
-        monitor_cfg: &MonitorConfig,
-        time: &TimeVal,
-    ) -> Result<InputEvent, EgalaxError> {
-        // TODO match self or *self. What's the difference?
-        let (code, value) = match self {
-            ChangeSet::Pressed => (EventCode::EV_KEY(EV_KEY::BTN_TOUCH), 1),
-            ChangeSet::Released => (EventCode::EV_KEY(EV_KEY::BTN_TOUCH), 0),
-            // ChangeSet::PressedRight => (EventCode::EV_KEY(EV_KEY::BTN_RIGHT), 1),
-            // ChangeSet::ReleasedRight => (EventCode::EV_KEY(EV_KEY::BTN_RIGHT), 0),
-            ChangeSet::ChangedX(x) => {
-                let xn =
-                    x.linear_factor(monitor_cfg.touch_event_ul.x, monitor_cfg.touch_event_lr.x);
-                let xm = dimX::lerp(
-                    monitor_cfg.monitor_area_ul.x,
-                    monitor_cfg.monitor_area_lr.x,
-                    xn,
-                );
-                (EventCode::EV_ABS(EV_ABS::ABS_X), xm.value())
-            }
-            ChangeSet::ChangedY(y) => {
-                let yn =
-                    y.linear_factor(monitor_cfg.touch_event_ul.y, monitor_cfg.touch_event_lr.y);
-                let ym = dimY::lerp(
-                    monitor_cfg.monitor_area_ul.y,
-                    monitor_cfg.monitor_area_lr.y,
-                    yn,
-                );
-                (EventCode::EV_ABS(EV_ABS::ABS_Y), ym.value())
-            }
-        };
+impl EventGen {
+    fn new(time: TimeVal) -> Self {
+        Self {
+            time,
+            events: Vec::new(),
+        }
+    }
 
-        Ok(InputEvent::new(time, &code, value as i32))
+    fn emit_btn_press(&mut self, btn: EV_KEY) {
+        self.events
+            .push(InputEvent::new(&self.time, &EventCode::EV_KEY(BTN_LEFT), 1));
+    }
+
+    fn emit_btn_release(&mut self, btn: EV_KEY) {
+        self.events
+            .push(InputEvent::new(&self.time, &EventCode::EV_KEY(BTN_LEFT), 0));
+    }
+
+    fn emit_move_x(&mut self, x: dimX, monitor_cfg: &MonitorConfig) {
+        let xn = x.linear_factor(monitor_cfg.touch_event_ul.x, monitor_cfg.touch_event_lr.x);
+        let xm = dimX::lerp(
+            monitor_cfg.monitor_area_ul.x,
+            monitor_cfg.monitor_area_lr.x,
+            xn,
+        );
+        self.events.push(InputEvent::new(
+            &self.time,
+            &EventCode::EV_ABS(EV_ABS::ABS_X),
+            xm.value(),
+        ));
+    }
+    fn emit_move_y(&mut self, y: dimY, monitor_cfg: &MonitorConfig) {
+        let yn = y.linear_factor(monitor_cfg.touch_event_ul.y, monitor_cfg.touch_event_lr.y);
+        let ym = dimY::lerp(
+            monitor_cfg.monitor_area_ul.y,
+            monitor_cfg.monitor_area_lr.y,
+            yn,
+        );
+        self.events.push(InputEvent::new(
+            &self.time,
+            &EventCode::EV_ABS(EV_ABS::ABS_Y),
+            ym.value(),
+        ));
+    }
+
+    fn emit_syn(&mut self) {
+        self.events.push(InputEvent::new(
+            &self.time,
+            &EventCode::EV_SYN(EV_SYN::SYN_REPORT),
+            0,
+        ))
+    }
+    fn finish(mut self) -> Vec<InputEvent> {
+        self.emit_syn();
+        self.events
     }
 }
 
 #[derive(Debug, PartialEq)]
 struct TouchState {
     is_touching: bool,
-    // is_right_click: bool,
-    // touch_start: Option<Instant>,
+    is_right_click: bool,
     p: Point,
+    touch_start: Option<Instant>,
+    // touch_point: Option<Point>,
 }
 
 impl TouchState {
@@ -227,9 +231,10 @@ impl Default for TouchState {
     fn default() -> Self {
         TouchState {
             is_touching: false,
-            // is_right_click: false,
-            // touch_start: None,
+            is_right_click: false,
             p: (0, 0).into(),
+            touch_start: None,
+            // touch_point: None,
         }
     }
 }
@@ -306,10 +311,10 @@ where
     let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
 
     loop {
-        // println!("read next packet");
         stream.read_exact(&mut raw_packet)?;
+        let time = TimeVal::try_from(SystemTime::now()).map_err(EgalaxError::TimeError)?;
         let packet = Packet::try_from(raw_packet)?;
-        f(packet)?;
+        f(packet.with_time(time))?;
     }
 }
 
@@ -324,9 +329,8 @@ pub fn virtual_mouse(mut stream: impl io::Read) -> Result<(), EgalaxError> {
     let vm = driver.get_virtual_device()?;
 
     let mut process_packet = |packet| {
-        // println!("processing packet");
-        let changes = driver.update(packet);
-        driver.send_event(&vm, &changes)
+        let events = driver.update(packet);
+        driver.send_events(&vm, &events)
     };
     process_packets(&mut stream, &mut process_packet)
 }

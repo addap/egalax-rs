@@ -33,17 +33,17 @@ pub struct Point {
 }
 
 impl<T: Dim> udim<T> {
-    pub fn value(&self) -> UdimRepr {
-        self.1
+    pub fn value(&self) -> i32 {
+        self.1 as i32
     }
 
     pub fn linear_factor(&self, a: udim<T>, b: udim<T>) -> f64 {
         // solve for t
         // self = t * a + (1 - t) * b
         // => t = (b - self)/(b - a)
-        println!("a: {}\tb: {}\tc: {}", a, b, self);
+        // println!("a: {}\tb: {}\tc: {}", a, b, self);
         let t = ((b.value() - self.value()) as f64) / ((b.value() - a.value()) as f64);
-        println!("linear factor: {}", t);
+        // println!("linear factor: {}", t);
         t
     }
 
@@ -90,6 +90,12 @@ impl<T: Dim> From<f64> for udim<T> {
 impl<T: Dim> From<&udim<T>> for i32 {
     fn from(d: &udim<T>) -> Self {
         d.1 as i32
+    }
+}
+
+impl From<(dimX, dimY)> for Point {
+    fn from((x, y): (dimX, dimY)) -> Self {
+        Point { x, y }
     }
 }
 
