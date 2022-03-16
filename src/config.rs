@@ -51,17 +51,17 @@ impl MonitorConfigBuilder {
     fn get_monitor_area(&self) -> Result<AABB, EgalaxError> {
         // If we have a name we look for a monitor with that name
         // otherwise we just take the primary monitor, which must exist.
-        if let Some(name) = self.name.clone() {
+        if let Some(name) = &self.name {
             self.monitors
                 .iter()
                 .find_map(|monitor| {
-                    if monitor.name == name {
+                    if monitor.name == *name {
                         Some(AABB::from(monitor))
                     } else {
                         None
                     }
                 })
-                .ok_or(EgalaxError::MonitorNotFound(name))
+                .ok_or(EgalaxError::MonitorNotFound(name.clone()))
         } else {
             let primary = self
                 .monitors
