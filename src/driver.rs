@@ -1,5 +1,9 @@
 use crate::config::{MonitorConfig, MonitorConfigBuilder};
-use crate::protocol::{Packet, ParsePacketError, RawPacket, RAW_PACKET_LEN};
+use crate::protocol::{
+    Packet, ParsePacketError, RawPacket,
+    TouchState::{self, *},
+    RAW_PACKET_LEN,
+};
 use crate::{dimX, dimY, Point};
 use evdev_rs::enums::{BusType, EventCode, EventType, InputProp, EV_ABS, EV_KEY, EV_SYN};
 use evdev_rs::{
@@ -16,14 +20,14 @@ const BTN_RIGHT: EV_KEY = EV_KEY::BTN_STYLUS2;
 
 #[derive(Debug, PartialEq)]
 struct Driver {
-    touch_state: TouchState,
+    state: DriverState,
     monitor_cfg: MonitorConfig,
 }
 
 impl Driver {
     fn new(monitor_cfg: MonitorConfig) -> Self {
         Self {
-            touch_state: TouchState::default(),
+            state: DriverState::default(),
             monitor_cfg,
         }
     }
@@ -34,49 +38,55 @@ impl Driver {
     fn update(&mut self, packet: Packet) -> Vec<InputEvent> {
         let mut events = EventGen::new(packet.time());
 
-        match (self.touch_state.is_touching, packet.is_touching()) {
-            (false, false) => {}
-            (true, false) => {
+        // Compare last with current touch state
+        match (self.state.touch_state, packet.touch_state()) {
+            (NotTouching, NotTouching) => {}
+            (IsTouching, NotTouching) => {
+                log::info!("Releasing left-click.");
                 events.emit_btn_release(BTN_LEFT);
 
-                if self.touch_state.is_right_click {
+                if self.state.is_right_click {
+                    log::info!("Releasing right-click.");
                     events.emit_btn_release(BTN_RIGHT);
                 }
-                self.touch_state.reset();
+                self.state.reset();
             }
-            (false, true) => {
-                self.touch_state.touch_start_time = Some(Instant::now());
-                self.touch_state.touch_origin = Some(Point::from((packet.x(), packet.y())));
+            (NotTouching, IsTouching) => {
+                log::info!("Starting touch.");
+                self.state.touch_start_time = Some(Instant::now());
+                self.state.touch_origin = Some(Point::from((packet.x(), packet.y())));
                 events.emit_btn_press(BTN_LEFT);
             }
-            (true, true) => {
-                if !self.touch_state.is_right_click && !self.touch_state.has_moved {
+            (IsTouching, IsTouching) => {
+                if !self.state.is_right_click && !self.state.has_moved {
                     // check if during press we moved too far away from origin and diable right-click
-                    let touch_origin = self.touch_state.touch_origin.as_ref().unwrap();
+                    let touch_origin = self.state.touch_origin.as_ref().unwrap();
                     let touch_distance =
                         touch_origin.euc_distance_to(&Point::from((packet.x(), packet.y())));
 
                     if touch_distance > HAS_MOVED_THRESHOLD {
-                        self.touch_state.has_moved = true;
+                        log::info!("Finger has moved while touching. Disabling right-click.");
+                        self.state.has_moved = true;
                     } else {
                         // check if we pressed long enough to trigger a right-click
-                        let touch_start_time = self.touch_state.touch_start_time.unwrap();
+                        let touch_start_time = self.state.touch_start_time.unwrap();
                         let time_touching = Instant::now().duration_since(touch_start_time);
 
                         if time_touching > RIGHT_CLICK_THRESHOLD {
-                            self.touch_state.is_right_click = true;
+                            log::info!("Starting right-click.");
+                            self.state.is_right_click = true;
                             events.emit_btn_press(BTN_RIGHT);
                         }
                     }
                 }
             }
         }
-        self.touch_state.is_touching = packet.is_touching();
+        self.state.touch_state = packet.touch_state();
 
-        self.touch_state.set_x(packet.x());
+        self.state.set_x(packet.x());
         events.emit_move_x(packet.x(), &self.monitor_cfg);
 
-        self.touch_state.set_y(packet.y());
+        self.state.set_y(packet.y());
         events.emit_move_y(packet.y(), &self.monitor_cfg);
 
         events.finish()
@@ -158,12 +168,12 @@ impl EventGen {
 
     fn emit_btn_press(&mut self, btn: EV_KEY) {
         self.events
-            .push(InputEvent::new(&self.time, &EventCode::EV_KEY(BTN_LEFT), 1));
+            .push(InputEvent::new(&self.time, &EventCode::EV_KEY(btn), 1));
     }
 
     fn emit_btn_release(&mut self, btn: EV_KEY) {
         self.events
-            .push(InputEvent::new(&self.time, &EventCode::EV_KEY(BTN_LEFT), 0));
+            .push(InputEvent::new(&self.time, &EventCode::EV_KEY(btn), 0));
     }
 
     fn emit_move_x(&mut self, x: dimX, monitor_cfg: &MonitorConfig) {
@@ -207,8 +217,8 @@ impl EventGen {
 }
 
 #[derive(Debug, PartialEq)]
-struct TouchState {
-    is_touching: bool,
+struct DriverState {
+    touch_state: TouchState,
     is_right_click: bool,
     has_moved: bool,
     p: Point,
@@ -216,9 +226,9 @@ struct TouchState {
     touch_origin: Option<Point>,
 }
 
-impl TouchState {
-    pub fn is_touching(&self) -> bool {
-        self.is_touching
+impl DriverState {
+    pub fn touch_state(&self) -> TouchState {
+        self.touch_state
     }
 
     pub fn x(&self) -> dimX {
@@ -245,10 +255,10 @@ impl TouchState {
     }
 }
 
-impl Default for TouchState {
+impl Default for DriverState {
     fn default() -> Self {
-        TouchState {
-            is_touching: false,
+        DriverState {
+            touch_state: TouchState::NotTouching,
             is_right_click: false,
             has_moved: false,
             p: (0, 0).into(),
@@ -315,6 +325,7 @@ where
 
     loop {
         stream.read_exact(&mut raw_packet)?;
+        // log::info!("Successfully read raw packet.");
         let time = TimeVal::try_from(SystemTime::now()).map_err(EgalaxError::TimeError)?;
         let packet = Packet::try_from(raw_packet)?;
         f(packet.with_time(time))?;
@@ -333,9 +344,18 @@ pub fn virtual_mouse(
 ) -> Result<(), EgalaxError> {
     let mut driver = Driver::new(monitor_cfg);
     let vm = driver.get_virtual_device()?;
+    // log::info!(
+    //     "Successfully set up virtual input device with device node {}",
+    //     if let Some(devnode) = vm.devnode() {
+    //         devnode
+    //     } else {
+    //         "<unknown>"
+    //     }
+    // );
 
     let mut process_packet = |packet| {
         let events = driver.update(packet);
+        // log::info!("Updated internal state and sending input events to device.");
         driver.send_events(&vm, &events)
     };
     process_packets(&mut stream, &mut process_packet)

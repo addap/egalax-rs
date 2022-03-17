@@ -6,11 +6,28 @@ use evdev_rs::TimeVal;
 
 use crate::{dimX, dimY, Point, UdimRepr};
 
+/// A boolean indicating if a finger touch is detected.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum TouchState {
+    IsTouching,
+    NotTouching,
+}
+
+impl From<bool> for TouchState {
+    fn from(b: bool) -> Self {
+        if b {
+            Self::IsTouching
+        } else {
+            Self::NotTouching
+        }
+    }
+}
+
 /// A representation of a packet sent over USB
 #[derive(PartialEq, Debug)]
 pub struct Packet {
     time: Option<TimeVal>,
-    is_touching: bool,
+    touch_state: TouchState,
     p: Point,
     res: u8,
 }
@@ -28,8 +45,8 @@ impl Packet {
             TimeVal::new(0, 0)
         }
     }
-    pub fn is_touching(&self) -> bool {
-        self.is_touching
+    pub fn touch_state(&self) -> TouchState {
+        self.touch_state
     }
     pub fn x(&self) -> dimX {
         self.p.x
@@ -77,7 +94,7 @@ impl TryFrom<RawPacket> for Packet {
             _ => unreachable!("only two bits should be left, match can never succeed"),
         };
 
-        let is_touching = (packet[1] & bits::TOUCH_BIT) == 0x01;
+        let touch_state = TouchState::from((packet[1] & bits::TOUCH_BIT) == 0x01);
 
         let y: UdimRepr = ((packet[3] as UdimRepr) << 8) | (packet[2] as UdimRepr);
         let x: UdimRepr = ((packet[5] as UdimRepr) << 8) | (packet[4] as UdimRepr);
@@ -90,7 +107,7 @@ impl TryFrom<RawPacket> for Packet {
 
         Ok(Packet {
             time: None,
-            is_touching,
+            touch_state,
             p: (x, y).into(),
             res,
         })
@@ -130,7 +147,7 @@ mod tests {
         assert_eq!(
             Ok(Packet {
                 time: Some(zero()),
-                is_touching: true,
+                touch_state: TouchState::IsTouching,
                 p: (306, 315).into(),
                 res: 12
             }),
@@ -145,7 +162,7 @@ mod tests {
         assert_eq!(
             Ok(Packet {
                 time: Some(zero()),
-                is_touching: false,
+                touch_state: TouchState::IsTouching,
                 p: (313, 309).into(),
                 res: 12
             }),

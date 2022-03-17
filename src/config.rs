@@ -2,7 +2,7 @@ use crate::driver::EgalaxError;
 use crate::Point;
 use std::{
     cmp::{max, min},
-    error,
+    error, fmt,
     ops::Add,
 };
 use xrandr::{Monitor, XHandle};
@@ -83,6 +83,20 @@ pub struct MonitorConfig {
     pub monitor_area_lr: Point,
     pub touch_event_ul: Point,
     pub touch_event_lr: Point,
+}
+
+impl fmt::Display for MonitorConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = format!("Total virtual screen space is from {} to {}.\nMonitor area within screen space is from {} to {}.\nMonitor will send touch events in range {} to {}", 
+            self.screen_space_ul, 
+            self.screen_space_lr, 
+            self.monitor_area_ul,
+            self.monitor_area_lr,
+            self.touch_event_ul,
+            self.touch_event_lr);
+
+        f.write_str(&description)
+    }
 }
 
 /// An axis-aligned bounding box consisting of an upper left corner (x1, y1) and lower right corner (x2, y2)
