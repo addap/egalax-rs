@@ -1,7 +1,5 @@
-use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_REL, EV_SYN};
-use evdev_rs::{
-    AbsInfo, Device, DeviceWrapper, InputEvent, ReadFlag, TimeVal, UInputDevice, UninitDevice,
-};
+use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_SYN};
+use evdev_rs::{AbsInfo, DeviceWrapper, InputEvent, TimeVal, UInputDevice, UninitDevice};
 use std::thread;
 use std::time::Duration;
 
@@ -51,16 +49,16 @@ fn mkdev() -> Result<UInputDevice, std::io::Error> {
 
 fn main() -> Result<(), std::io::Error> {
     let v = mkdev()?;
-    let ZERO = TimeVal::new(0, 0);
+    let zero = TimeVal::new(0, 0);
 
     v.write_event(&InputEvent {
-        time: ZERO,
+        time: zero,
         event_code: EventCode::EV_KEY(EV_KEY::BTN_TOUCH),
         value: 1,
     })?;
 
     v.write_event(&InputEvent {
-        time: ZERO,
+        time: zero,
         event_code: EventCode::EV_SYN(EV_SYN::SYN_REPORT),
         value: 0,
     })?;
@@ -68,19 +66,19 @@ fn main() -> Result<(), std::io::Error> {
     for i in 3..12 {
         // Write mapped event
         v.write_event(&InputEvent {
-            time: ZERO,
+            time: zero,
             event_code: EventCode::EV_ABS(EV_ABS::ABS_X),
             value: 30 * i,
         })?;
 
         v.write_event(&InputEvent {
-            time: ZERO,
+            time: zero,
             event_code: EventCode::EV_ABS(EV_ABS::ABS_Y),
             value: 60 * i,
         })?;
 
         v.write_event(&InputEvent {
-            time: ZERO,
+            time: zero,
             event_code: EventCode::EV_SYN(EV_SYN::SYN_REPORT),
             value: 0,
         })?;
@@ -89,13 +87,13 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     v.write_event(&InputEvent {
-        time: ZERO,
+        time: zero,
         event_code: EventCode::EV_KEY(EV_KEY::BTN_TOUCH),
         value: 0,
     })?;
 
     v.write_event(&InputEvent {
-        time: ZERO,
+        time: zero,
         event_code: EventCode::EV_SYN(EV_SYN::SYN_REPORT),
         value: 0,
     })?;

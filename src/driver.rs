@@ -1,4 +1,4 @@
-use crate::config::{MonitorConfig, MonitorConfigBuilder};
+use crate::config::MonitorConfig;
 use crate::protocol::{
     Packet, ParsePacketError, RawPacket,
     TouchState::{self, *},
@@ -6,9 +6,7 @@ use crate::protocol::{
 };
 use crate::{dimX, dimY, Point};
 use evdev_rs::enums::{BusType, EventCode, EventType, InputProp, EV_ABS, EV_KEY, EV_SYN};
-use evdev_rs::{
-    AbsInfo, Device, DeviceWrapper, InputEvent, ReadFlag, TimeVal, UInputDevice, UninitDevice,
-};
+use evdev_rs::{AbsInfo, DeviceWrapper, InputEvent, TimeVal, UInputDevice, UninitDevice};
 use std::time::{self, Duration, Instant, SystemTime};
 use std::{error, fmt, io, thread};
 

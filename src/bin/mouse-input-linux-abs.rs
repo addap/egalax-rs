@@ -3,8 +3,7 @@ use std::{fs::OpenOptions, io, thread, time::Duration};
 
 use input_linux::{
     AbsoluteAxis, AbsoluteEvent, AbsoluteInfoSetup, EventKind, EventTime, InputEvent, InputId, Key,
-    KeyEvent, KeyState, RelativeAxis, RelativeEvent, SynchronizeEvent, SynchronizeKind,
-    UInputHandle,
+    KeyEvent, KeyState, SynchronizeEvent, SynchronizeKind, UInputHandle,
 };
 use nix::libc::O_NONBLOCK;
 

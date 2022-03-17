@@ -2,7 +2,7 @@ use crate::driver::EgalaxError;
 use crate::Point;
 use std::{
     cmp::{max, min},
-    error, fmt,
+    fmt,
     ops::Add,
 };
 use xrandr::{Monitor, XHandle};

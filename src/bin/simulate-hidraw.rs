@@ -1,11 +1,10 @@
 use egalax_rs::{config::MonitorConfigBuilder, driver::virtual_mouse};
-use nix::{libc, sys::stat, unistd::mkfifo};
+use nix::{sys::stat, unistd::mkfifo};
 use std::{
     error,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{Cursor, Read, Write},
-    os::unix::prelude::OpenOptionsExt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     thread,
     time::Duration,
 };
