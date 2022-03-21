@@ -279,6 +279,12 @@ pub enum EgalaxError {
     Xrandr(xrandr::XrandrError),
 }
 
+impl From<time::SystemTimeError> for EgalaxError {
+    fn from(e: time::SystemTimeError) -> Self {
+        Self::TimeError(e)
+    }
+}
+
 impl From<io::Error> for EgalaxError {
     fn from(e: io::Error) -> Self {
         Self::IOError(e)
@@ -326,7 +332,7 @@ where
     loop {
         stream.read_exact(&mut raw_packet)?;
         // log::info!("Successfully read raw packet.");
-        let time = TimeVal::try_from(SystemTime::now()).map_err(EgalaxError::TimeError)?;
+        let time = TimeVal::try_from(SystemTime::now())?;
         let packet = Packet::try_from(raw_packet)?;
         f(packet.with_time(time))?;
     }
