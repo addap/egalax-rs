@@ -131,6 +131,17 @@ impl fmt::Display for ParsePacketError {
     }
 }
 
+impl fmt::Display for Packet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let touch = match self.touch_state {
+            TouchState::IsTouching => "1",
+            TouchState::NotTouching => "0",
+        };
+        let description = format!("Touch={}, Point={}", touch, self.p);
+        f.write_str(&description)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

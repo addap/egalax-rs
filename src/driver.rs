@@ -34,6 +34,8 @@ impl Driver {
     /// Technically, Linux' input subsystem already filters out duplicate events so we could immediately turn the packet into InputEvent objects.
     /// But to support right clicks we must maintain some state.
     fn update(&mut self, packet: Packet) -> Vec<InputEvent> {
+        log::info!("Processing packet: {}", packet);
+
         let mut events = EventGen::new(packet.time());
 
         // Compare last with current touch state
