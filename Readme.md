@@ -32,6 +32,10 @@ An input driver for our old egalax touchscreen. Translates the raw binary output
 
  After installing the evdev driver it works, the touchscreen is registered in xinput and moves the cursor.
 
+- the hid report descriptor in `hid-report-descriptor.txt`. HID devices use this to document the binary format that they send. The relevant part for us seems to be the USAGE(X) and USAGE(Y) in lines 48 and 59, respectively. The minimum and maximum correspond to what the usbhid driver sets as can be gathered from `evemu-record`. Unfortunately, the screen reports wrong numbers (e.g. X values are supposed to range from 30 to 4040), so manual calibration seems unavoidable if we want to avoid magic numbers in our binary.
+
+```$ sudo usbhid-dump -a 3:88 -p | tail -n +2 | xxd -r -p | opt/hidrd/src/hidrd-convert -o spec -```
+
 ## Binary Format
 The format described in the "Software Programming Guide" does not exactly match what I'm seeing in the xxd output, but it's similar.
 - Sends packets of 6 bytes, e.g. 
@@ -48,7 +52,7 @@ The format described in the "Software Programming Guide" does not exactly match 
 ```
 
 ## Ways to get information
-- `lsusb` lists all usb devices. 
+- `lsusb` lists all usb devices. Use `-v` (preferably while filtering out one device with `-s`) to get the whole descriptor tree for usb devices.
 - /sys
 
 As described [here](http://cholla.mmto.org/computers/usb/OLD/tutorial_usbloger.html) "Sysfs is a virtual filesystem exported by the kernel, similar to /proc. The files in Sysfs contain information about devices and drivers. Some files in Sysfs are even writable, for configuration and control of devices attached to the system. Sysfs is always mounted on /sys."
@@ -66,6 +70,7 @@ Probably scrapes /sys (similar to explained [here](https://unix.stackexchange.co
 - `/usr/share/X11/xorg.conf.d/` can place *.conf file in there to tell xorg which devices should use which drivers. [.conf file format](https://www.x.org/releases/current/doc/man/man5/xorg.conf.5.xhtml). There are several such directories but this one supports reading the config files again on every device connection so you don't have to reboot all the time.
 - `dmesg` kernel messages. The first one to tell you when a new device is connected.
 - `/etc/modprobe.d/blacklist` blacklist for kernel modules
+- 
 
 ## Using above commands to get info about egalax touchscreen (while `usbtouchscreen` blacklisted)
 1. plug in egalax usb cable 
