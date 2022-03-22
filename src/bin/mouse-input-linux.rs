@@ -2,11 +2,10 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::{fs::OpenOptions, io, thread, time::Duration};
 
 use input_linux::{
-    EventKind, EventTime, InputEvent, InputId, RelativeAxis, RelativeEvent,
-    SynchronizeEvent, SynchronizeKind, UInputHandle,
+    EventKind, EventTime, InputEvent, InputId, RelativeAxis, RelativeEvent, SynchronizeEvent,
+    SynchronizeKind, UInputHandle,
 };
 use nix::libc::O_NONBLOCK;
-
 
 // A rust translation of the uinput example available at
 // https://docs.kernel.org/input/uinput.html#mouse-movements

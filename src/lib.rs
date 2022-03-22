@@ -33,6 +33,12 @@ pub struct Point {
     pub y: dimY,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Range<T: Dim> {
+    pub min: udim<T>,
+    pub max: udim<T>,
+}
+
 impl<T: Dim> udim<T> {
     pub fn value(&self) -> i32 {
         self.1 as i32
@@ -133,3 +139,16 @@ impl From<(UdimRepr, UdimRepr)> for Point {
         }
     }
 }
+
+// TODO implement deserialize
+// impl<T: Dim> Serialize for Range<T> {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         let mut tup = serializer.serialize_tuple(2)?;
+//         tup.serialize_element(&self.min.value())?;
+//         tup.serialize_element(&self.max.value())?;
+//         tup.end()
+//     }
+// }
