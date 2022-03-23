@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     thread::spawn(move || virtual_sender(hidraw, path1));
 
     let reader = OpenOptions::new().read(true).open(&path).unwrap();
-    let monitor_cfg = MonitorConfigBuilder::new()?
+    let monitor_cfg = MonitorConfigBuilder::default()
         .with_name(Some(String::from("eDP")))
         .build()?;
     println!("setup complete");

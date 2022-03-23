@@ -1,58 +1,82 @@
-use crate::driver::EgalaxError;
-use crate::Point;
-use std::{
-    cmp::{max, min},
-    fmt,
-    ops::Add,
-};
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::fs::OpenOptions;
+use std::path::Path;
 use xrandr::{Monitor, XHandle};
 
+use crate::{driver::EgalaxError, geo::AABB};
+
+/// Parameters needed to translate the touch event coordinates coming from the monitor to coordinates in X's screen space.
+#[derive(Debug, PartialEq)]
+pub struct MonitorConfig {
+    /// Total virtual screen space in pixels. the union of all screen spaces of connected displays.
+    pub screen_space: AABB,
+    /// Screen space of the target monitor in absolute pixels.
+    pub monitor_area: AABB,
+    /// The coordinates of the calibration points in the coordinate system of the touch screen (appears to be physically in units of 0.1mm).
+    pub calibration_points: AABB,
+}
+
+impl fmt::Display for MonitorConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let description = format!("Total virtual screen space is {}.\nMonitor area within screen space is {}.\nCalibration points of touchscreen are {}", 
+            self.screen_space,
+            self.monitor_area,
+            self.calibration_points);
+
+        f.write_str(&description)
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct MonitorConfigBuilder {
-    name: Option<String>,
-    monitors: Vec<Monitor>,
+    /// Name of the xrandr output of the monitor on which touch events will be interpreted.
+    monitor_name: Option<String>,
+    /// The coordinates of the calibration points in the coordinate system of the touch screen (appears to be physically in units of 0.1mm).
+    calibration_points: AABB,
+    /// The coordinates of the calibration points in the coordinate system of the screen space in pixels.
+    calibration_margins_px: AABB,
 }
 
 impl MonitorConfigBuilder {
-    pub fn new() -> Result<Self, EgalaxError> {
-        let monitors = XHandle::open()?.monitors()?;
-        Ok(MonitorConfigBuilder {
-            name: None,
-            monitors,
-        })
+    pub fn from_file<P>(path: P) -> Result<Self, EgalaxError>
+    where
+        P: AsRef<Path>,
+    {
+        let f = OpenOptions::new().read(true).open(path)?;
+        let config_file = serde_lexpr::from_reader(f)?;
+        Ok(config_file)
     }
 
-    pub fn with_name(mut self, name: Option<String>) -> Self {
-        self.name = name;
+    pub fn with_name(mut self, monitor_name: Option<String>) -> Self {
+        self.monitor_name = monitor_name;
         self
     }
 
     pub fn build(self) -> Result<MonitorConfig, EgalaxError> {
-        let screen_space = self.compute_screen_space();
-        let monitor_area = self.get_monitor_area()?;
+        let monitors = XHandle::open()?.monitors()?;
+        let screen_space = self.compute_screen_space(&monitors);
+        let monitor_area = self.get_monitor_area(&monitors)?;
 
         Ok(MonitorConfig {
-            screen_space_ul: (screen_space.x1, screen_space.y1).into(),
-            screen_space_lr: (screen_space.x2, screen_space.y2).into(),
-            monitor_area_ul: (monitor_area.x1, monitor_area.y1).into(),
-            monitor_area_lr: (monitor_area.x2, monitor_area.y2).into(),
-            // TODO should be able to query from monitor
-            touch_event_ul: (300, 300).into(),
-            touch_event_lr: (3800, 3800).into(),
+            screen_space: screen_space,
+            monitor_area: monitor_area,
+            calibration_points: self.calibration_points,
         })
     }
 
-    fn compute_screen_space(&self) -> AABB {
-        self.monitors
+    fn compute_screen_space(&self, monitors: &[Monitor]) -> AABB {
+        monitors
             .iter()
             .map(AABB::from)
-            .fold(AABB::new(), <AABB as Add>::add)
+            .fold(AABB::default(), AABB::union)
     }
 
-    fn get_monitor_area(&self) -> Result<AABB, EgalaxError> {
+    fn get_monitor_area(&self, monitors: &[Monitor]) -> Result<AABB, EgalaxError> {
         // If we have a name we look for a monitor with that name
         // otherwise we just take the primary monitor, which must exist.
-        if let Some(name) = &self.name {
-            self.monitors
+        let bbox = match &self.monitor_name {
+            Some(name) => monitors
                 .iter()
                 .find_map(|monitor| {
                     if monitor.name == *name {
@@ -61,84 +85,22 @@ impl MonitorConfigBuilder {
                         None
                     }
                 })
-                .ok_or(EgalaxError::MonitorNotFound(name.clone()))
-        } else {
-            let primary = self
-                .monitors
-                .iter()
-                .find(|monitor| monitor.is_primary)
-                .unwrap();
-            Ok(AABB::from(primary))
-        }
+                .ok_or(EgalaxError::MonitorNotFound(name.clone())),
+            None => {
+                let primary = monitors.iter().find(|monitor| monitor.is_primary).unwrap();
+                Ok(AABB::from(primary))
+            }
+        }?;
+        Ok(bbox + self.calibration_margins_px)
     }
 }
 
-/// Parameters needed to translate the touch event coordinates coming from the monitor to coordinates in X's screen space.
-/// a.d. TODO we might be able to remove some coordinates if we set the resolution in the uinput absinfo
-#[derive(Debug, PartialEq)]
-pub struct MonitorConfig {
-    pub screen_space_ul: Point,
-    pub screen_space_lr: Point,
-    pub monitor_area_ul: Point,
-    pub monitor_area_lr: Point,
-    pub touch_event_ul: Point,
-    pub touch_event_lr: Point,
-}
-
-impl fmt::Display for MonitorConfig {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = format!("Total virtual screen space is from {} to {}.\nMonitor area within screen space is from {} to {}.\nMonitor will send touch events in range {} to {}", 
-            self.screen_space_ul, 
-            self.screen_space_lr, 
-            self.monitor_area_ul,
-            self.monitor_area_lr,
-            self.touch_event_ul,
-            self.touch_event_lr);
-
-        f.write_str(&description)
-    }
-}
-
-/// An axis-aligned bounding box consisting of an upper left corner (x1, y1) and lower right corner (x2, y2)
-#[derive(Debug, PartialEq)]
-struct AABB {
-    x1: i32,
-    y1: i32,
-    x2: i32,
-    y2: i32,
-}
-
-impl AABB {
-    fn new() -> Self {
-        AABB {
-            x1: 0,
-            y1: 0,
-            x2: 0,
-            y2: 0,
-        }
-    }
-}
-
-impl Add for AABB {
-    type Output = AABB;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        AABB {
-            x1: min(self.x1, rhs.x1),
-            y1: min(self.y1, rhs.y1),
-            x2: max(self.x2, rhs.x2),
-            y2: max(self.y2, rhs.y2),
-        }
-    }
-}
-
-impl From<&xrandr::Monitor> for AABB {
-    fn from(m: &xrandr::Monitor) -> Self {
-        AABB {
-            x1: m.x,
-            y1: m.y,
-            x2: m.x + m.width_px,
-            y2: m.y + m.height_px,
+impl Default for MonitorConfigBuilder {
+    fn default() -> Self {
+        Self {
+            monitor_name: None,
+            calibration_points: AABB::new(300, 300, 3800, 3800),
+            calibration_margins_px: AABB::new(0, 0, 0, 0),
         }
     }
 }

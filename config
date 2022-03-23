@@ -1,0 +1,5 @@
+(
+    (monitor_name) 
+    (calibration_points (x1 . 300) (y1 . 300) (x2 . 3800) (y2 . 3800)) 
+    (calibration_margins_px (x1 . 0) (y1 . 0) (x2 . 0) (y2 . 0))
+)

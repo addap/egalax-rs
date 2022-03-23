@@ -4,7 +4,7 @@ use std::{error, fmt};
 
 use evdev_rs::TimeVal;
 
-use crate::{dimX, dimY, Point, UdimRepr};
+use crate::{geo::Point, units::*};
 
 /// A boolean indicating if a finger touch is detected.
 #[derive(Debug, PartialEq, Clone, Copy)]

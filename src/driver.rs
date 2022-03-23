@@ -4,7 +4,7 @@ use crate::protocol::{
     TouchState::{self, *},
     RAW_PACKET_LEN,
 };
-use crate::{dimX, dimY, Point};
+use crate::{geo::Point, units::*};
 use evdev_rs::enums::{BusType, EventCode, EventType, InputProp, EV_ABS, EV_KEY, EV_SYN};
 use evdev_rs::{AbsInfo, DeviceWrapper, InputEvent, TimeVal, UInputDevice, UninitDevice};
 use std::time::{self, Duration, Instant, SystemTime};
@@ -112,8 +112,8 @@ impl Driver {
 
         let abs_info_x: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.monitor_cfg.screen_space_ul.x.value().into(),
-            maximum: self.monitor_cfg.screen_space_lr.x.value().into(),
+            minimum: self.monitor_cfg.screen_space.x().min.value(),
+            maximum: self.monitor_cfg.screen_space.x().max.value(),
             // TODO test if fuzz value works as expected. should remove spurious drags when pressing long for right-click
             fuzz: 50,
             flat: 0,
@@ -122,8 +122,8 @@ impl Driver {
 
         let abs_info_y: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.monitor_cfg.screen_space_ul.y.value().into(),
-            maximum: self.monitor_cfg.screen_space_lr.y.value().into(),
+            minimum: self.monitor_cfg.screen_space.y().min.value(),
+            maximum: self.monitor_cfg.screen_space.y().max.value(),
             fuzz: 50,
             flat: 0,
             resolution: 0,
@@ -177,12 +177,8 @@ impl EventGen {
     }
 
     fn emit_move_x(&mut self, x: dimX, monitor_cfg: &MonitorConfig) {
-        let xn = x.linear_factor(monitor_cfg.touch_event_ul.x, monitor_cfg.touch_event_lr.x);
-        let xm = dimX::lerp(
-            monitor_cfg.monitor_area_ul.x,
-            monitor_cfg.monitor_area_lr.x,
-            xn,
-        );
+        let t = monitor_cfg.calibration_points.x().linear_factor(x);
+        let xm = monitor_cfg.monitor_area.x().lerp(t);
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_X),
@@ -190,12 +186,8 @@ impl EventGen {
         ));
     }
     fn emit_move_y(&mut self, y: dimY, monitor_cfg: &MonitorConfig) {
-        let yn = y.linear_factor(monitor_cfg.touch_event_ul.y, monitor_cfg.touch_event_lr.y);
-        let ym = dimY::lerp(
-            monitor_cfg.monitor_area_ul.y,
-            monitor_cfg.monitor_area_lr.y,
-            yn,
-        );
+        let t = monitor_cfg.calibration_points.y().linear_factor(y);
+        let ym = monitor_cfg.monitor_area.y().lerp(t);
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_Y),
@@ -277,6 +269,7 @@ pub enum EgalaxError {
     ParseError(ParsePacketError),
     IOError(io::Error),
     Xrandr(xrandr::XrandrError),
+    SerdeLexpr(serde_lexpr::Error),
 }
 
 impl From<time::SystemTimeError> for EgalaxError {
@@ -303,6 +296,12 @@ impl From<xrandr::XrandrError> for EgalaxError {
     }
 }
 
+impl From<serde_lexpr::Error> for EgalaxError {
+    fn from(e: serde_lexpr::Error) -> Self {
+        Self::SerdeLexpr(e)
+    }
+}
+
 impl error::Error for EgalaxError {}
 
 impl fmt::Display for EgalaxError {
@@ -313,6 +312,7 @@ impl fmt::Display for EgalaxError {
             EgalaxError::IOError(e) => return e.fmt(f),
             EgalaxError::TimeError(e) => return e.fmt(f),
             EgalaxError::Xrandr(e) => return e.fmt(f),
+            EgalaxError::SerdeLexpr(e) => return e.fmt(f),
             EgalaxError::UnexpectedEOF => String::from("Unexpected EOF"),
             EgalaxError::DeviceError => String::from("Device Error"),
             EgalaxError::MonitorNotFound(name) => format!("Monitor \"{}\" not found", name),
