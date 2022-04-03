@@ -1,0 +1,8 @@
+[Unit]
+Description=Device for egalax touchscreen
+
+[Service]
+Type=simple
+Environment="RUST_LOG=debug"
+#ExecStart=/home/adrian/info.sh %I
+ExecStart=/home/adrian/programming/rust/egalax-rs/target/debug/egalax-rs %I
