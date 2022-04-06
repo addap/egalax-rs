@@ -1,5 +1,5 @@
-use std::thread;
 use std::time::{Duration, SystemTime};
+use std::{fmt, thread};
 use std::{fs::OpenOptions, io::Read};
 
 use egalax_rs::geo::{Point, AABB};
@@ -7,15 +7,15 @@ use evdev_rs::TimeVal;
 use sdl2::event::Event;
 use sdl2::gfx::primitives::{DrawRenderer, ToColor};
 use sdl2::keyboard::Keycode;
+use sdl2::mixer::{Channel, Chunk};
 use sdl2::pixels;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture, TextureCreator};
-use sdl2::ttf::Font;
+use sdl2::ttf::{Font, Sdl2TtfContext};
 use sdl2::video::{Window, WindowContext};
 use sdl2::Sdl;
 
 use egalax_rs::protocol::{Packet, RawPacket, TouchState, RAW_PACKET_LEN};
-use egalax_rs::units::UdimRepr;
 
 /// Number of calibration points
 const stage_max: usize = 4;
@@ -75,6 +75,17 @@ impl CalibrationStage {
     }
 }
 
+impl fmt::Display for CalibrationStage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_finished() {
+            f.write_str("Finished")
+        } else {
+            let s = format!("Stage {}", self.stage + 1);
+            f.write_str(&s[..])
+        }
+    }
+}
+
 /// A collection of touch coordinates that belong to a single calibration point.
 /// The final touch coordinate of that calibration point is computed as the midpoint of the smallest area that contains the whole collection.
 struct TouchCloud {
@@ -124,6 +135,15 @@ impl CalibrationState {
     }
 }
 
+struct SdlState<'ttf> {
+    // sdl_context: Sdl,
+    // ttf_context: &'ttf Sdl2TtfContext,
+    canvas: Canvas<Window>,
+    font: Font<'ttf, 'static>,
+    wow: Chunk,
+    shot: Chunk,
+}
+
 /// Initialize the sdl canvas and create a window.
 fn init_canvas(sdl_context: &Sdl) -> Result<Canvas<Window>, String> {
     let video_subsystem = sdl_context.video()?;
@@ -140,7 +160,7 @@ fn init_canvas(sdl_context: &Sdl) -> Result<Canvas<Window>, String> {
 }
 
 /// Render the calibration points as circles.
-fn render_circles(canvas: &mut Canvas<Window>, state: &CalibrationState) -> Result<(), String> {
+fn render_circles(sdl_state: &SdlState, state: &CalibrationState) -> Result<(), String> {
     let red = pixels::Color::RGB(255, 0, 0);
     let green = pixels::Color::RGB(0, 255, 0);
 
@@ -155,8 +175,8 @@ fn render_circles(canvas: &mut Canvas<Window>, state: &CalibrationState) -> Resu
     for (color, coords) in colors.zip(pixel_coords.iter()) {
         let x = coords.0 as i16;
         let y = coords.1 as i16;
-        canvas.aa_circle(x, y, 20, color)?;
-        canvas.filled_circle(x, y, 20, color)?;
+        sdl_state.canvas.aa_circle(x, y, 20, color)?;
+        sdl_state.canvas.filled_circle(x, y, 20, color)?;
     }
 
     Ok(())
@@ -182,59 +202,37 @@ fn render_text<'a>(
 }
 
 /// Render the menu centered on the canvas.
-fn render_menu(
-    canvas: &mut Canvas<Window>,
-    state: &CalibrationState,
-    font: &Font,
-) -> Result<(), String> {
-    let tex_creator = canvas.texture_creator();
+fn render_menu(sdl_state: &mut SdlState, state: &CalibrationState) -> Result<(), String> {
+    let tex_creator = sdl_state.canvas.texture_creator();
     let title = render_text(
         &tex_creator,
-        font,
-        format!("Stage {}", state.calibration_stage.stage),
+        &sdl_state.font,
+        format!("{}", state.calibration_stage),
     )?;
-    let quit = render_text(&tex_creator, font, "(q)uit")?;
-    let reset = render_text(&tex_creator, font, "(r)eset")?;
-    let save = render_text(&tex_creator, font, "(s)ave")?;
+    let quit = render_text(&tex_creator, &sdl_state.font, "(q)uit")?;
+    let reset = render_text(&tex_creator, &sdl_state.font, "(r)eset")?;
+    let save = render_text(&tex_creator, &sdl_state.font, "(s)ave")?;
     let display = render_text(
         &tex_creator,
-        font,
+        &sdl_state.font,
         "Touch anywhere to visualize touch events with the current calibration.",
     )?;
 
     let menu = if state.calibration_stage.is_finished() {
-        vec![title, quit, reset, save]
+        vec![title, quit, reset, save, display]
     } else {
         vec![title, quit, reset]
     };
 
-    let (_, _, menu_area) = menu
-        .iter()
-        .fold((0, 0, AABB::default()), |(x, y, area), tex| {
-            let q = tex.query();
-            let new_area = AABB::new_wh(x, y, q.width as i32, q.height as i32);
-            (x, y + (q.height as i32) + 10, area.union(new_area))
-        });
-    let (wwidth, wheight) = canvas.window().drawable_size();
+    let (wwidth, wheight) = sdl_state.canvas.window().drawable_size();
 
-    let (x, mut y) = (
-        wwidth as i32 / 2 - menu_area.width(),
-        wheight as i32 / 2 - menu_area.height() / 2,
-    );
+    let mut y = wheight as i32 / 2 - 100;
     for item in menu {
         let q = item.query();
-        canvas.copy(&item, None, Some(Rect::new(x, y, q.width, q.height)))?;
-        y += q.height as i32 + 10;
-    }
-    // render the `display` texture separately so that it does not throw off the centering calculation.
-    if state.calibration_stage.is_finished() {
-        let q = display.query();
         let x = wwidth / 2 - q.width / 2;
-        canvas.copy(
-            &display,
-            None,
-            Some(Rect::new(x as i32, y, q.width, q.height)),
-        )?;
+        sdl_state
+            .canvas
+            .copy(&item, None, Some(Rect::new(x as i32, y, q.width, q.height)))?;
         y += q.height as i32 + 10;
     }
 
@@ -242,19 +240,17 @@ fn render_menu(
 }
 
 /// Render one frame.
-fn render(
-    canvas: &mut Canvas<Window>,
-    state: &CalibrationState,
-    font: &Font,
-) -> Result<(), String> {
+fn render(sdl_state: &mut SdlState, state: &CalibrationState) -> Result<(), String> {
     // clear canvas
-    canvas.set_draw_color(pixels::Color::RGB(255, 255, 255));
-    canvas.clear();
+    sdl_state
+        .canvas
+        .set_draw_color(pixels::Color::RGB(255, 255, 255));
+    sdl_state.canvas.clear();
 
-    render_circles(canvas, state)?;
-    render_menu(canvas, state, font)?;
+    render_circles(sdl_state, state)?;
+    render_menu(sdl_state, state)?;
 
-    canvas.present();
+    sdl_state.canvas.present();
     Ok(())
 }
 
@@ -269,10 +265,30 @@ fn main() -> Result<(), String> {
 
     let sdl_context = sdl2::init()?;
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
-    let font = ttf_context.load_font("Roboto-Regular.ttf", 32)?;
-    let mut canvas = init_canvas(&sdl_context)?;
+    let _mixer_context =
+        sdl2::mixer::init(sdl2::mixer::InitFlag::MP3).map_err(|e| e.to_string())?;
+    // need to "open an audio device" to be able to load chunks, i.e. sound effects below
+    sdl2::mixer::open_audio(
+        44100,
+        sdl2::mixer::DEFAULT_FORMAT,
+        sdl2::mixer::DEFAULT_CHANNELS,
+        1024,
+    )?;
+
+    let canvas = init_canvas(&sdl_context)?;
     let mut events = sdl_context.event_pump()?;
 
+    let font = ttf_context.load_font("Roboto-Regular.ttf", 32)?;
+
+    let wow = Chunk::from_file("media/wow.mp3")?;
+    let shot = Chunk::from_file("media/shot.mp3")?;
+
+    let mut sdl_state: SdlState = SdlState {
+        canvas,
+        font,
+        wow,
+        shot,
+    };
     let mut state = CalibrationState::new();
 
     'event_loop: loop {
@@ -294,7 +310,8 @@ fn main() -> Result<(), String> {
                     }
                     Keycode::Space => {
                         if state.calibration_stage.is_finished() {
-                            todo!("save calibration")
+                            // todo!("save calibration")
+                            Channel::play(Channel(-1), &sdl_state.wow, 0)?;
                         }
                     }
                     Keycode::R => state.reset(),
@@ -311,28 +328,32 @@ fn main() -> Result<(), String> {
             let read_bytes = device_node
                 .read(&mut raw_packet)
                 .map_err(|e| e.to_string())?;
-            if read_bytes != RAW_PACKET_LEN {
-                return Err(String::from("Did not read neough bytes"));
-            }
-
-            let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
-
-            // If we are still in one of the four calibration stages we collect the calibration points
-            state.touch_cloud.push((packet.x(), packet.y()).into());
-            if state.calibration_stage.is_ongoing() {
-                match (state.touch_state, packet.touch_state()) {
-                    (TouchState::IsTouching, TouchState::NotTouching) => {
-                        let coord = state.touch_cloud.compute_touch_coord();
-                        state.touch_cloud.clear();
-                        state.calibration_stage.advance(coord)?;
-                    }
-                    _ => {}
+            if read_bytes > 0 {
+                if read_bytes != RAW_PACKET_LEN {
+                    return Err(String::from("Did not read neough bytes"));
                 }
-                state.touch_state = packet.touch_state();
+
+                let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
+
+                // If we are still in one of the four calibration stages we collect the calibration points
+                state.touch_cloud.push((packet.x(), packet.y()).into());
+                if state.calibration_stage.is_ongoing() {
+                    match (state.touch_state, packet.touch_state()) {
+                        (TouchState::IsTouching, TouchState::NotTouching) => {
+                            let coord = state.touch_cloud.compute_touch_coord();
+                            state.touch_cloud.clear();
+                            state.calibration_stage.advance(coord)?;
+
+                            Channel::play(Channel(-1), &sdl_state.shot, 0)?;
+                        }
+                        _ => {}
+                    }
+                    state.touch_state = packet.touch_state();
+                }
             }
         }
 
-        render(&mut canvas, &state, &font)?;
+        render(&mut sdl_state, &state)?;
 
         thread::sleep(Duration::from_millis(10));
     }
