@@ -7,7 +7,7 @@ use std::{
 
 use crate::units::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Point {
     pub x: dimX,
     pub y: dimY,
@@ -72,6 +72,10 @@ impl<T: Dim> Range<T> {
     pub fn lerp(&self, t: f64) -> udim<T> {
         ((self.min.value() as f64) * t + (self.max.value() as f64) * (1.0 - t)).into()
     }
+
+    pub fn midpoint(&self) -> udim<T> {
+        self.lerp(0.5)
+    }
 }
 
 impl<T: Dim> fmt::Display for Range<T> {
@@ -107,7 +111,16 @@ pub struct AABB {
 
 impl AABB {
     pub fn new(x1: UdimRepr, y1: UdimRepr, x2: UdimRepr, y2: UdimRepr) -> Self {
-        AABB { x1, y1, x2, y2 }
+        AABB {
+            x1: min(x1, x2),
+            y1: min(y1, y2),
+            x2: max(x1, x2),
+            y2: max(y1, y2),
+        }
+    }
+
+    pub fn new_wh(x: UdimRepr, y: UdimRepr, width: UdimRepr, height: UdimRepr) -> Self {
+        AABB::new(x, y, x + width, y + height)
     }
 
     // TODO could use AsRef to be able to call it with a reference
@@ -117,6 +130,15 @@ impl AABB {
             y1: min(self.y1, rhs.y1),
             x2: max(self.x2, rhs.x2),
             y2: max(self.y2, rhs.y2),
+        }
+    }
+
+    pub fn grow_to_point(self, point: &Point) -> Self {
+        AABB {
+            x1: min(self.x1, point.x.value()),
+            y1: min(self.y1, point.y.value()),
+            x2: max(self.x2, point.x.value()),
+            y2: max(self.y2, point.y.value()),
         }
     }
 
@@ -131,6 +153,21 @@ impl AABB {
         Range {
             min: self.y1.into(),
             max: self.y2.into(),
+        }
+    }
+
+    pub fn width(&self) -> UdimRepr {
+        self.x2 - self.x1
+    }
+
+    pub fn height(&self) -> UdimRepr {
+        self.y2 - self.y1
+    }
+
+    pub fn midpoint(&self) -> Point {
+        Point {
+            x: self.x().midpoint(),
+            y: self.y().midpoint(),
         }
     }
 }
