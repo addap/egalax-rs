@@ -133,6 +133,7 @@ impl AABB {
         }
     }
 
+    /// Grow the AABB so that it also contains point.
     pub fn grow_to_point(self, point: &Point) -> Self {
         AABB {
             x1: min(self.x1, point.x.value()),

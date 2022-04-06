@@ -17,7 +17,11 @@ use sdl2::Sdl;
 use egalax_rs::protocol::{Packet, RawPacket, TouchState, RAW_PACKET_LEN};
 use egalax_rs::units::UdimRepr;
 
+/// Number of calibration points
 const stage_max: usize = 4;
+
+/// Pixel coordinates of calibration points.
+/// TODO should be computed from canvas.window().drawable_area
 const pixel_coords: [(i32, i32); stage_max] = [
     (100, 100),
     (1920 - 100, 100),
@@ -25,9 +29,12 @@ const pixel_coords: [(i32, i32); stage_max] = [
     (1920 - 100, 1080 - 100),
 ];
 
+/// A stage in the calibration process.
 #[derive(Debug, Clone)]
 struct CalibrationStage {
+    /// A number identifier of the stage.
     stage: usize,
+    /// The coordinates of each individual calibration points in the coordinate system of the touch screen.
     touch_coords: Vec<Point>,
 }
 
@@ -54,6 +61,7 @@ impl CalibrationStage {
         self.stage == stage_max
     }
 
+    /// Add new coordinates and go to the next stage.
     fn advance(&mut self, coord: Point) -> Result<(), String> {
         assert!(self.stage <= stage_max);
 
@@ -67,6 +75,8 @@ impl CalibrationStage {
     }
 }
 
+/// A collection of touch coordinates that belong to a single calibration point.
+/// The final touch coordinate of that calibration point is computed as the midpoint of the smallest area that contains the whole collection.
 struct TouchCloud {
     v: Vec<Point>,
 }
@@ -91,6 +101,7 @@ impl TouchCloud {
     }
 }
 
+/// The state of the calibration.
 struct CalibrationState {
     calibration_stage: CalibrationStage,
     touch_cloud: TouchCloud,
@@ -113,6 +124,7 @@ impl CalibrationState {
     }
 }
 
+/// Initialize the sdl canvas and create a window.
 fn init_canvas(sdl_context: &Sdl) -> Result<Canvas<Window>, String> {
     let video_subsystem = sdl_context.video()?;
     let window = video_subsystem
@@ -127,6 +139,7 @@ fn init_canvas(sdl_context: &Sdl) -> Result<Canvas<Window>, String> {
     Ok(canvas)
 }
 
+/// Render the calibration points as circles.
 fn render_circles(canvas: &mut Canvas<Window>, state: &CalibrationState) -> Result<(), String> {
     let red = pixels::Color::RGB(255, 0, 0);
     let green = pixels::Color::RGB(0, 255, 0);
@@ -149,6 +162,7 @@ fn render_circles(canvas: &mut Canvas<Window>, state: &CalibrationState) -> Resu
     Ok(())
 }
 
+/// Construct a texture out of a string of text.
 fn render_text<'a>(
     tex_creator: &'a TextureCreator<WindowContext>,
     font: &Font,
@@ -167,6 +181,7 @@ fn render_text<'a>(
     Ok(tex)
 }
 
+/// Render the menu centered on the canvas.
 fn render_menu(
     canvas: &mut Canvas<Window>,
     state: &CalibrationState,
@@ -211,6 +226,7 @@ fn render_menu(
         canvas.copy(&item, None, Some(Rect::new(x, y, q.width, q.height)))?;
         y += q.height as i32 + 10;
     }
+    // render the `display` texture separately so that it does not throw off the centering calculation.
     if state.calibration_stage.is_finished() {
         let q = display.query();
         let x = wwidth / 2 - q.width / 2;
@@ -225,6 +241,7 @@ fn render_menu(
     Ok(())
 }
 
+/// Render one frame.
 fn render(
     canvas: &mut Canvas<Window>,
     state: &CalibrationState,
@@ -290,7 +307,6 @@ fn main() -> Result<(), String> {
 
         // then try to read packets from hidraw
         {
-            // thread::sleep(Duration::from_secs(1));
             let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
             let read_bytes = device_node
                 .read(&mut raw_packet)
@@ -301,8 +317,7 @@ fn main() -> Result<(), String> {
 
             let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
 
-            // Either we are still in one of the four calibration stages where we collect the calibration points
-            // Or we are done and will visualize the touch point based on the newly calibrated values
+            // If we are still in one of the four calibration stages we collect the calibration points
             state.touch_cloud.push((packet.x(), packet.y()).into());
             if state.calibration_stage.is_ongoing() {
                 match (state.touch_state, packet.touch_state()) {
