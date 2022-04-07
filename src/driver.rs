@@ -185,6 +185,7 @@ impl EventGen {
             xm.value(),
         ));
     }
+
     fn emit_move_y(&mut self, y: dimY, monitor_cfg: &MonitorConfig) {
         let t = monitor_cfg.calibration_points.y().linear_factor(y);
         let ym = monitor_cfg.monitor_area.y().lerp(t);

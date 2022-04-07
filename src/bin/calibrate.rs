@@ -2,6 +2,7 @@ use std::time::{Duration, SystemTime};
 use std::{fmt, thread};
 use std::{fs::OpenOptions, io::Read};
 
+use egalax_rs::config::MonitorConfigBuilder;
 use egalax_rs::geo::{Point, AABB};
 use evdev_rs::TimeVal;
 use sdl2::event::Event;
@@ -310,7 +311,35 @@ fn main() -> Result<(), String> {
                     }
                     Keycode::Space => {
                         if state.calibration_stage.is_finished() {
-                            // todo!("save calibration")
+                            if state.calibration_stage.touch_coords.len() != 4 {
+                                return Err(String::from("Number of calibration points must be 4"));
+                            }
+
+                            // TODO don't just take entries 0 and 3. should we average them with entries 1 & 2?
+                            let calibration_points = AABB::new(
+                                state.calibration_stage.touch_coords[0].x.value(),
+                                state.calibration_stage.touch_coords[0].y.value(),
+                                state.calibration_stage.touch_coords[3].x.value(),
+                                state.calibration_stage.touch_coords[3].y.value(),
+                            );
+                            let calibration_margins_px = AABB::new(
+                                pixel_coords[0].0,
+                                pixel_coords[0].1,
+                                pixel_coords[3].0,
+                                pixel_coords[3].1,
+                            );
+                            let config = MonitorConfigBuilder::new(
+                                None,
+                                calibration_points,
+                                calibration_margins_px,
+                            );
+
+                            let f = OpenOptions::new()
+                                .write(true)
+                                .open("./config")
+                                .map_err(|e| e.to_string())?;
+                            serde_lexpr::to_writer(f, &config).map_err(|e| e.to_string())?;
+
                             Channel::play(Channel(-1), &sdl_state.wow, 0)?;
                         }
                     }

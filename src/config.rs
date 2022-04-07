@@ -39,6 +39,18 @@ pub struct MonitorConfigBuilder {
 }
 
 impl MonitorConfigBuilder {
+    pub fn new(
+        monitor_name: Option<String>,
+        calibration_points: AABB,
+        calibration_margins_px: AABB,
+    ) -> Self {
+        MonitorConfigBuilder {
+            monitor_name,
+            calibration_points,
+            calibration_margins_px,
+        }
+    }
+
     pub fn from_file<P>(path: P) -> Result<Self, EgalaxError>
     where
         P: AsRef<Path>,
