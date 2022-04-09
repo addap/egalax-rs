@@ -2,10 +2,11 @@ use std::time::Duration;
 use std::{fmt, thread};
 use std::{fs::OpenOptions, io::Read};
 
-use egalax_rs::config::MonitorConfigBuilder;
+use egalax_rs::config::{MonitorAreaDesignator, MonitorConfig, MonitorConfigBuilder};
 use egalax_rs::geo::{Point, AABB};
 use sdl2::event::Event;
 use sdl2::gfx::primitives::DrawRenderer;
+use sdl2::image::LoadTexture;
 use sdl2::keyboard::Keycode;
 use sdl2::mixer::{Channel, Chunk};
 use sdl2::rect::Rect;
@@ -31,57 +32,54 @@ const PIXEL_COORDS: [(i32, i32); STAGE_MAX] = [
 
 /// A stage in the calibration process.
 #[derive(Debug, Clone)]
-struct CalibrationStage {
-    /// A number identifier of the stage.
-    stage: usize,
-    /// The coordinates of each individual calibration points in the coordinate system of the touch screen.
-    touch_coords: Vec<Point>,
+enum CalibrationStage {
+    Ongoing {
+        /// A number identifier of the stage.
+        stage: usize,
+        /// The coordinates of each individual calibration points in the coordinate system of the touch screen.
+        touch_coords: Vec<Point>,
+    },
+    Finished {
+        /// The final config builder that is persisted
+        cfg_builder: MonitorConfigBuilder,
+        /// The final config to be used.
+        monitor_cfg: MonitorConfig,
+    },
 }
 
-impl CalibrationStage {
-    fn new() -> Self {
-        Self {
+impl Default for CalibrationStage {
+    fn default() -> Self {
+        Self::Ongoing {
             stage: 0,
             touch_coords: Vec::new(),
         }
     }
+}
 
-    fn reset(&mut self) {
-        self.stage = 0;
-        self.touch_coords.clear();
-    }
-
+impl CalibrationStage {
     fn is_ongoing(&self) -> bool {
-        assert!(self.stage <= STAGE_MAX);
-        self.stage < STAGE_MAX
+        match self {
+            CalibrationStage::Ongoing { .. } => true,
+            _ => false,
+        }
     }
 
     fn is_finished(&self) -> bool {
-        assert!(self.stage <= STAGE_MAX);
-        self.stage == STAGE_MAX
-    }
-
-    /// Add new coordinates and go to the next stage.
-    fn advance(&mut self, coord: Point) -> Result<(), String> {
-        assert!(self.stage <= STAGE_MAX);
-
-        if self.stage < STAGE_MAX {
-            self.touch_coords.push(coord);
-            self.stage += 1;
-            Ok(())
-        } else {
-            Err(String::from("Already at last stage"))
+        match self {
+            CalibrationStage::Finished { .. } => true,
+            _ => false,
         }
     }
 }
 
 impl fmt::Display for CalibrationStage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_finished() {
-            f.write_str("Finished")
-        } else {
-            let s = format!("Stage {}", self.stage + 1);
-            f.write_str(&s[..])
+        match self {
+            CalibrationStage::Ongoing { stage, .. } => {
+                let s = format!("Stage {}", stage + 1);
+                f.write_str(&s[..])
+            }
+            CalibrationStage::Finished { .. } => f.write_str("Finished"),
         }
     }
 }
@@ -93,10 +91,13 @@ struct TouchCloud {
 }
 
 impl TouchCloud {
+    /// Compute the smallest bounding box that contains all points and then return its midpoint.
     fn compute_touch_coord(&self) -> Point {
-        let mut abox = AABB::default();
+        assert!(self.v.len() >= 1);
 
-        for point in &self.v {
+        let mut abox = AABB::from(self.v[0]);
+
+        for point in self.v.iter().skip(1) {
             abox = abox.grow_to_point(&point);
         }
 
@@ -117,31 +118,81 @@ struct CalibrationState {
     calibration_stage: CalibrationStage,
     touch_cloud: TouchCloud,
     touch_state: TouchState,
+    decals: Vec<Point>,
 }
 
 impl CalibrationState {
     fn new() -> Self {
         Self {
-            calibration_stage: CalibrationStage::new(),
+            calibration_stage: CalibrationStage::default(),
             touch_cloud: TouchCloud { v: Vec::new() },
             touch_state: TouchState::NotTouching,
+            decals: Vec::new(),
         }
     }
 
-    fn reset(&mut self) {
-        self.calibration_stage.reset();
-        self.touch_cloud.clear();
-        self.touch_state = TouchState::NotTouching;
+    /// Add new coordinates and go to the next stage.
+    /// Switches the given calibration stage to Finished if necessary.
+    fn advance(&mut self, coord: Point) -> Result<(), String> {
+        match &mut self.calibration_stage {
+            CalibrationStage::Ongoing {
+                stage,
+                touch_coords,
+            } => {
+                touch_coords.push(coord);
+                *stage += 1;
+
+                // switch stage to finished
+                if *stage == STAGE_MAX {
+                    if touch_coords.len() != 4 {
+                        return Err(String::from("Number of calibration points must be 4"));
+                    }
+
+                    // TODO don't hardcode
+                    let monitor_area_designator = MonitorAreaDesignator::Area(AABB::new(
+                        PIXEL_COORDS[0].0,
+                        PIXEL_COORDS[0].1,
+                        PIXEL_COORDS[3].0,
+                        PIXEL_COORDS[3].1,
+                    ));
+
+                    // TODO don't just take entries 0 and 3. should we average them with entries 1 & 2?
+                    let calibration_points = AABB::new(
+                        touch_coords[0].x.value(),
+                        touch_coords[0].y.value(),
+                        touch_coords[2].x.value(),
+                        touch_coords[2].y.value(),
+                    );
+                    let cfg_builder =
+                        MonitorConfigBuilder::new(monitor_area_designator, calibration_points);
+                    let monitor_cfg = cfg_builder.clone().build().map_err(|e| e.to_string())?;
+
+                    println!(
+                        "Using config builder {:#?} and config {:#?}",
+                        cfg_builder, monitor_cfg
+                    );
+
+                    self.calibration_stage = CalibrationStage::Finished {
+                        cfg_builder,
+                        monitor_cfg,
+                    };
+                }
+
+                Ok(())
+            }
+            CalibrationStage::Finished { .. } => Err(String::from("Already at last stage")),
+        }
     }
 }
 
-struct SdlState<'ttf> {
+struct SdlState<'ttf, 'tex> {
     // sdl_context: Sdl,
     // ttf_context: &'ttf Sdl2TtfContext,
     canvas: Canvas<Window>,
     font: Font<'ttf, 'static>,
     wow: Chunk,
     shot: Chunk,
+    hitmarker: Texture<'tex>,
 }
 
 /// Initialize the sdl canvas and create a window.
@@ -164,15 +215,15 @@ fn render_circles(sdl_state: &SdlState, state: &CalibrationState) -> Result<(), 
     let red = pixels::Color::RGB(255, 0, 0);
     let green = pixels::Color::RGB(0, 255, 0);
 
-    let colors = (0..STAGE_MAX).map(|stage| {
-        if stage == state.calibration_stage.stage {
-            green
-        } else {
-            red
-        }
-    });
+    let current_stage = if let CalibrationStage::Ongoing { stage, .. } = state.calibration_stage {
+        stage
+    } else {
+        STAGE_MAX
+    };
 
-    for (color, coords) in colors.zip(PIXEL_COORDS.iter()) {
+    for (stage, coords) in PIXEL_COORDS.iter().enumerate() {
+        let color = if stage == current_stage { green } else { red };
+
         let x = coords.0 as i16;
         let y = coords.1 as i16;
         sdl_state.canvas.aa_circle(x, y, 20, color)?;
@@ -183,7 +234,7 @@ fn render_circles(sdl_state: &SdlState, state: &CalibrationState) -> Result<(), 
 }
 
 /// Construct a texture out of a string of text.
-fn render_text<'a>(
+fn tex_from_text<'a>(
     tex_creator: &'a TextureCreator<WindowContext>,
     font: &Font,
     text: impl AsRef<str>,
@@ -201,18 +252,30 @@ fn render_text<'a>(
     Ok(tex)
 }
 
+/// Render a hitmarker on all decal positions
+fn render_decals(sdl_state: &mut SdlState, decals: &[Point]) -> Result<(), String> {
+    for decal in decals {
+        let rect = Rect::new(decal.x.value() - 5, decal.y.value() - 5, 11, 11);
+        sdl_state
+            .canvas
+            .copy(&sdl_state.hitmarker, None, Some(rect))?;
+    }
+
+    Ok(())
+}
+
 /// Render the menu centered on the canvas.
 fn render_menu(sdl_state: &mut SdlState, state: &CalibrationState) -> Result<(), String> {
     let tex_creator = sdl_state.canvas.texture_creator();
-    let title = render_text(
+    let title = tex_from_text(
         &tex_creator,
         &sdl_state.font,
         format!("{}", state.calibration_stage),
     )?;
-    let quit = render_text(&tex_creator, &sdl_state.font, "(q)uit")?;
-    let reset = render_text(&tex_creator, &sdl_state.font, "(r)eset")?;
-    let save = render_text(&tex_creator, &sdl_state.font, "(s)ave")?;
-    let display = render_text(
+    let quit = tex_from_text(&tex_creator, &sdl_state.font, "(q)uit")?;
+    let reset = tex_from_text(&tex_creator, &sdl_state.font, "(r)eset")?;
+    let save = tex_from_text(&tex_creator, &sdl_state.font, "(s)ave")?;
+    let display = tex_from_text(
         &tex_creator,
         &sdl_state.font,
         "Touch anywhere to visualize touch events with the current calibration.",
@@ -248,6 +311,7 @@ fn render(sdl_state: &mut SdlState, state: &CalibrationState) -> Result<(), Stri
     sdl_state.canvas.clear();
 
     render_circles(sdl_state, state)?;
+    render_decals(sdl_state, &state.decals)?;
     render_menu(sdl_state, state)?;
 
     sdl_state.canvas.present();
@@ -255,26 +319,7 @@ fn render(sdl_state: &mut SdlState, state: &CalibrationState) -> Result<(), Stri
 }
 
 /// Save the calibration state to a config file
-fn save_calibration(sdl_state: &SdlState, state: &CalibrationState) -> Result<(), String> {
-    if state.calibration_stage.touch_coords.len() != 4 {
-        return Err(String::from("Number of calibration points must be 4"));
-    }
-
-    // TODO don't just take entries 0 and 3. should we average them with entries 1 & 2?
-    let calibration_points = AABB::new(
-        state.calibration_stage.touch_coords[0].x.value(),
-        state.calibration_stage.touch_coords[0].y.value(),
-        state.calibration_stage.touch_coords[3].x.value(),
-        state.calibration_stage.touch_coords[3].y.value(),
-    );
-    let calibration_margins_px = AABB::new(
-        PIXEL_COORDS[0].0,
-        PIXEL_COORDS[0].1,
-        PIXEL_COORDS[3].0,
-        PIXEL_COORDS[3].1,
-    );
-    let config = MonitorConfigBuilder::new(None, calibration_points, calibration_margins_px);
-
+fn save_calibration(sdl_state: &SdlState, config: &MonitorConfigBuilder) -> Result<(), String> {
     let f = OpenOptions::new()
         .write(true)
         .open("./config")
@@ -306,11 +351,11 @@ fn process_sdl_events(
                 return Ok(true);
             }
             Keycode::S => {
-                if state.calibration_stage.is_finished() {
-                    save_calibration(&sdl_state, &state)?;
+                if let CalibrationStage::Finished { cfg_builder, .. } = &state.calibration_stage {
+                    save_calibration(&sdl_state, cfg_builder)?;
                 }
             }
-            Keycode::R => state.reset(),
+            Keycode::R => *state = CalibrationState::new(),
             _ => {}
         },
 
@@ -320,39 +365,47 @@ fn process_sdl_events(
     Ok(false)
 }
 
-fn process_usb_packets(
+fn calibrate_with_packet(
     sdl_state: &SdlState,
     state: &mut CalibrationState,
-    mut stream: impl Read,
+    packet: Packet,
 ) -> Result<(), String> {
-    let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
-    let read_bytes = stream.read(&mut raw_packet).map_err(|e| e.to_string())?;
+    // If we are still in one of the four calibration stages we collect the calibration points
+    let p = (packet.x(), packet.y()).into();
+    println!("calibration point {:?}", p);
 
-    if read_bytes > 0 {
-        if read_bytes != RAW_PACKET_LEN {
-            return Err(String::from("Did not read neough bytes"));
-        }
+    state.touch_cloud.push(p);
+    if let (TouchState::IsTouching, TouchState::NotTouching) =
+        (state.touch_state, packet.touch_state())
+    {
+        let coord = state.touch_cloud.compute_touch_coord();
+        println!("set calibration point to {:?}", coord);
+        state.touch_cloud.clear();
+        state.advance(coord)?;
 
-        let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
-
-        // If we are still in one of the four calibration stages we collect the calibration points
-        state.touch_cloud.push((packet.x(), packet.y()).into());
-        if state.calibration_stage.is_ongoing() {
-            match (state.touch_state, packet.touch_state()) {
-                (TouchState::IsTouching, TouchState::NotTouching) => {
-                    let coord = state.touch_cloud.compute_touch_coord();
-                    state.touch_cloud.clear();
-                    state.calibration_stage.advance(coord)?;
-
-                    Channel::play(Channel(-1), &sdl_state.shot, 0)?;
-                }
-                _ => {}
-            }
-            state.touch_state = packet.touch_state();
-        }
+        Channel::play(Channel(-1), &sdl_state.shot, 0)?;
     }
+    state.touch_state = packet.touch_state();
 
     Ok(())
+}
+
+fn get_decal(monitor_cfg: &MonitorConfig, packet: Packet) -> Point {
+    let t = monitor_cfg.calibration_points.x().linear_factor(packet.x());
+    let x = monitor_cfg.monitor_area.x().lerp(t);
+
+    let t = monitor_cfg.calibration_points.y().linear_factor(packet.y());
+    let y = monitor_cfg.monitor_area.y().lerp(t);
+
+    let p = Point { x, y };
+
+    println!(
+        "Packet at ({}, {}) results in decal at {:?}",
+        packet.x(),
+        packet.y(),
+        p
+    );
+    p
 }
 
 fn main() -> Result<(), String> {
@@ -362,7 +415,7 @@ fn main() -> Result<(), String> {
 
     let node_path = std::env::args().nth(1).expect(usage);
     log::info!("Using raw device node '{}'", node_path);
-    let device_node = OpenOptions::new().read(true).open(&node_path).unwrap();
+    let mut device_node = OpenOptions::new().read(true).open(&node_path).unwrap();
 
     let sdl_context = sdl2::init()?;
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
@@ -375,8 +428,11 @@ fn main() -> Result<(), String> {
         sdl2::mixer::DEFAULT_CHANNELS,
         1024,
     )?;
+    let _image_context =
+        sdl2::image::init(sdl2::image::InitFlag::JPG).map_err(|e| e.to_string())?;
 
     let canvas = init_canvas(&sdl_context)?;
+    let tex_creator = canvas.texture_creator();
     let mut events = sdl_context.event_pump()?;
 
     let font = ttf_context.load_font("Roboto-Regular.ttf", 32)?;
@@ -384,11 +440,14 @@ fn main() -> Result<(), String> {
     let wow = Chunk::from_file("media/wow.mp3")?;
     let shot = Chunk::from_file("media/shot.mp3")?;
 
+    let hitmarker = tex_creator.load_texture("media/hitmarker.jpg")?;
+
     let mut sdl_state: SdlState = SdlState {
         canvas,
         font,
         wow,
         shot,
+        hitmarker,
     };
     let mut state = CalibrationState::new();
 
@@ -398,8 +457,29 @@ fn main() -> Result<(), String> {
             break 'event_loop;
         }
 
-        // then try to read packets from hidraw
-        process_usb_packets(&sdl_state, &mut state, &device_node)?;
+        // then try to read packets from hidraw which we either use to calibrate or to visualize the finished calibration
+
+        let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
+        let read_bytes = device_node
+            .read(&mut raw_packet)
+            .map_err(|e| e.to_string())?;
+
+        if read_bytes > 0 {
+            if read_bytes != RAW_PACKET_LEN {
+                return Err(String::from("Did not read neough bytes"));
+            }
+
+            let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
+            match state.calibration_stage {
+                CalibrationStage::Ongoing { .. } => {
+                    calibrate_with_packet(&sdl_state, &mut state, packet)?;
+                }
+                CalibrationStage::Finished { monitor_cfg, .. } => {
+                    let decal = get_decal(&monitor_cfg, packet);
+                    state.decals.push(decal);
+                }
+            }
+        }
         render(&mut sdl_state, &state)?;
         thread::sleep(Duration::from_millis(10));
     }

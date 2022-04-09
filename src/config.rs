@@ -7,7 +7,7 @@ use xrandr::{Monitor, XHandle};
 use crate::{driver::EgalaxError, geo::AABB};
 
 /// Parameters needed to translate the touch event coordinates coming from the monitor to coordinates in X's screen space.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct MonitorConfig {
     /// Total virtual screen space in pixels. the union of all screen spaces of connected displays.
     pub screen_space: AABB,
@@ -28,26 +28,19 @@ impl fmt::Display for MonitorConfig {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MonitorConfigBuilder {
     /// Name of the xrandr output of the monitor on which touch events will be interpreted.
-    monitor_name: Option<String>,
+    monitor_area_designator: MonitorAreaDesignator,
     /// The coordinates of the calibration points in the coordinate system of the touch screen (appears to be physically in units of 0.1mm).
     calibration_points: AABB,
-    /// The coordinates of the calibration points in the coordinate system of the screen space in pixels.
-    calibration_margins_px: AABB,
 }
 
 impl MonitorConfigBuilder {
-    pub fn new(
-        monitor_name: Option<String>,
-        calibration_points: AABB,
-        calibration_margins_px: AABB,
-    ) -> Self {
+    pub fn new(monitor_area_designator: MonitorAreaDesignator, calibration_points: AABB) -> Self {
         MonitorConfigBuilder {
-            monitor_name,
+            monitor_area_designator,
             calibration_points,
-            calibration_margins_px,
         }
     }
 
@@ -60,8 +53,8 @@ impl MonitorConfigBuilder {
         Ok(config_file)
     }
 
-    pub fn with_name(mut self, monitor_name: Option<String>) -> Self {
-        self.monitor_name = monitor_name;
+    pub fn with_name(mut self, monitor_name: String) -> Self {
+        self.monitor_area_designator = MonitorAreaDesignator::Name(monitor_name);
         self
     }
 
@@ -87,32 +80,38 @@ impl MonitorConfigBuilder {
     fn get_monitor_area(&self, monitors: &[Monitor]) -> Result<AABB, EgalaxError> {
         // If we have a name we look for a monitor with that name
         // otherwise we just take the primary monitor, which must exist.
-        let bbox = match &self.monitor_name {
-            Some(name) => monitors
+        match &self.monitor_area_designator {
+            MonitorAreaDesignator::Primary => {
+                let primary = monitors.iter().find(|monitor| monitor.is_primary).unwrap();
+                Ok(AABB::from(primary))
+            }
+            MonitorAreaDesignator::Name(monitor_name) => monitors
                 .iter()
                 .find_map(|monitor| {
-                    if monitor.name == *name {
+                    if monitor.name == *monitor_name {
                         Some(AABB::from(monitor))
                     } else {
                         None
                     }
                 })
-                .ok_or(EgalaxError::MonitorNotFound(name.clone())),
-            None => {
-                let primary = monitors.iter().find(|monitor| monitor.is_primary).unwrap();
-                Ok(AABB::from(primary))
-            }
-        }?;
-        Ok(bbox + self.calibration_margins_px)
+                .ok_or(EgalaxError::MonitorNotFound(monitor_name.clone())),
+            MonitorAreaDesignator::Area(monitor_area) => Ok(*monitor_area),
+        }
     }
 }
 
 impl Default for MonitorConfigBuilder {
     fn default() -> Self {
         Self {
-            monitor_name: None,
+            monitor_area_designator: MonitorAreaDesignator::Primary,
             calibration_points: AABB::new(300, 300, 3800, 3800),
-            calibration_margins_px: AABB::new(0, 0, 0, 0),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum MonitorAreaDesignator {
+    Primary,
+    Name(String),
+    Area(AABB),
 }

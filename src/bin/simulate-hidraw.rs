@@ -46,7 +46,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let reader = OpenOptions::new().read(true).open(&path).unwrap();
     let monitor_cfg = MonitorConfigBuilder::default()
-        .with_name(Some(String::from("eDP")))
+        .with_name(String::from("eDP"))
         .build()?;
     println!("setup complete");
 

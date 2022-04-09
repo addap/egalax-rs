@@ -213,6 +213,12 @@ impl From<&xrandr::Monitor> for AABB {
     }
 }
 
+impl From<Point> for AABB {
+    fn from(p: Point) -> Self {
+        AABB::new(p.x.value(), p.y.value(), p.x.value(), p.y.value())
+    }
+}
+
 // TODO implement deserialize
 // impl<T: Dim> Serialize for Range<T> {
 //     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
