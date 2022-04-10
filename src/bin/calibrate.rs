@@ -326,7 +326,7 @@ fn save_calibration(sdl_state: &SdlState, config: &MonitorConfigBuilder) -> Resu
         .map_err(|e| e.to_string())?;
     serde_lexpr::to_writer(f, &config).map_err(|e| e.to_string())?;
 
-    Channel::play(Channel(-1), &sdl_state.wow, 0)?;
+    Channel::play(Channel(-1), &sdl_state.wow, 0).ok();
 
     Ok(())
 }
@@ -383,7 +383,7 @@ fn calibrate_with_packet(
         state.touch_cloud.clear();
         state.advance(coord)?;
 
-        Channel::play(Channel(-1), &sdl_state.shot, 0)?;
+        Channel::play(Channel(-1), &sdl_state.shot, 0).ok();
     }
     state.touch_state = packet.touch_state();
 
