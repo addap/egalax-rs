@@ -440,7 +440,7 @@ fn main() -> Result<(), String> {
     let wow = Chunk::from_file("media/wow.mp3")?;
     let shot = Chunk::from_file("media/shot.mp3")?;
 
-    let hitmarker = tex_creator.load_texture("media/hitmarker.jpg")?;
+    let hitmarker = tex_creator.load_texture("media/hitmarker.png")?;
 
     let mut sdl_state: SdlState = SdlState {
         canvas,
