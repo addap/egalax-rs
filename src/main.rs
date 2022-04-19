@@ -12,14 +12,17 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     log::info!("Using raw device node '{}'", node_path);
     let device_node = OpenOptions::new().read(true).open(&node_path).unwrap();
 
-    // let monitor_name = std::env::args().nth(2);
-    // if let Some(monitor_name) = &monitor_name {
-    //     log::info!("Using monitor {}", monitor_name);
-    // }
-    let monitor_cfg =
-        MonitorConfigBuilder::from_file("/home/adrian/programming/rust/egalax-rs/config")?
-            // .with_name(monitor_name)
-            .build()?;
+    let monitor_name = std::env::args().nth(2);
+    let monitor_cfg = match monitor_name {
+        None => MonitorConfigBuilder::from_file("/home/adrian/programming/rust/egalax-rs/config")?
+            .build(),
+        Some(monitor_name) => {
+            log::info!("Using monitor {}", monitor_name);
+            MonitorConfigBuilder::from_file("/home/adrian/programming/rust/egalax-rs/config")?
+                .with_name(monitor_name)
+                .build()
+        }
+    }?;
     log::info!("Using monitor config {}", monitor_cfg);
 
     virtual_mouse(device_node, monitor_cfg)?;

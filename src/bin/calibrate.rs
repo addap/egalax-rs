@@ -21,15 +21,6 @@ use egalax_rs::protocol::{Packet, RawPacket, TouchState, RAW_PACKET_LEN};
 /// Number of calibration points
 const STAGE_MAX: usize = 4;
 
-/// Pixel coordinates of calibration points.
-/// TODO should be computed from canvas.window().drawable_area
-const PIXEL_COORDS: [(i32, i32); STAGE_MAX] = [
-    (100, 100),
-    (1920 - 100, 100),
-    (100, 1080 - 100),
-    (1920 - 100, 1080 - 100),
-];
-
 /// A stage in the calibration process.
 #[derive(Debug, Clone)]
 enum CalibrationStage {
@@ -133,7 +124,11 @@ impl CalibrationState {
 
     /// Add new coordinates and go to the next stage.
     /// Switches the given calibration stage to Finished if necessary.
-    fn advance(&mut self, coord: Point) -> Result<(), String> {
+    fn advance(
+        &mut self,
+        coord: Point,
+        pixel_coords: &[(i32, i32); STAGE_MAX],
+    ) -> Result<(), String> {
         match &mut self.calibration_stage {
             CalibrationStage::Ongoing {
                 stage,
@@ -150,18 +145,18 @@ impl CalibrationState {
 
                     // TODO don't hardcode
                     let monitor_area_designator = MonitorAreaDesignator::Area(AABB::new(
-                        PIXEL_COORDS[0].0,
-                        PIXEL_COORDS[0].1,
-                        PIXEL_COORDS[3].0,
-                        PIXEL_COORDS[3].1,
+                        pixel_coords[0].0,
+                        pixel_coords[0].1,
+                        pixel_coords[3].0,
+                        pixel_coords[3].1,
                     ));
 
                     // TODO don't just take entries 0 and 3. should we average them with entries 1 & 2?
                     let calibration_points = AABB::new(
                         touch_coords[0].x.value(),
                         touch_coords[0].y.value(),
-                        touch_coords[2].x.value(),
-                        touch_coords[2].y.value(),
+                        touch_coords[3].x.value(),
+                        touch_coords[3].y.value(),
                     );
                     let cfg_builder =
                         MonitorConfigBuilder::new(monitor_area_designator, calibration_points);
@@ -189,6 +184,8 @@ struct SdlState<'ttf, 'tex> {
     // sdl_context: Sdl,
     // ttf_context: &'ttf Sdl2TtfContext,
     canvas: Canvas<Window>,
+    /// Pixel coordinates of calibration points.
+    pixel_coords: [(i32, i32); STAGE_MAX],
     font: Font<'ttf, 'static>,
     wow: Chunk,
     shot: Chunk,
@@ -210,6 +207,21 @@ fn init_canvas(sdl_context: &Sdl) -> Result<Canvas<Window>, String> {
     Ok(canvas)
 }
 
+/// The event pump must have been polled at least calling this function.
+fn init_pixel_coords(canvas: &Canvas<Window>) -> Result<[(i32, i32); STAGE_MAX], String> {
+    let (wwidth, wheight) = canvas.window().drawable_size();
+
+    let pixel_coords: [(i32, i32); STAGE_MAX] = [
+        ((wwidth as f64 * 0.1) as i32, (wheight as f64 * 0.1) as i32),
+        ((wwidth as f64 * 0.9) as i32, (wheight as f64 * 0.1) as i32),
+        ((wwidth as f64 * 0.1) as i32, (wheight as f64 * 0.9) as i32),
+        ((wwidth as f64 * 0.9) as i32, (wheight as f64 * 0.9) as i32),
+    ];
+    println!("{:#?}", pixel_coords);
+
+    Ok(pixel_coords)
+}
+
 /// Render the calibration points as circles.
 fn render_circles(sdl_state: &SdlState, state: &CalibrationState) -> Result<(), String> {
     let red = pixels::Color::RGB(255, 0, 0);
@@ -221,7 +233,7 @@ fn render_circles(sdl_state: &SdlState, state: &CalibrationState) -> Result<(), 
         STAGE_MAX
     };
 
-    for (stage, coords) in PIXEL_COORDS.iter().enumerate() {
+    for (stage, coords) in sdl_state.pixel_coords.iter().enumerate() {
         let color = if stage == current_stage { green } else { red };
 
         let x = coords.0 as i16;
@@ -381,7 +393,7 @@ fn calibrate_with_packet(
         let coord = state.touch_cloud.compute_touch_coord();
         println!("set calibration point to {:?}", coord);
         state.touch_cloud.clear();
-        state.advance(coord)?;
+        state.advance(coord, &sdl_state.pixel_coords)?;
 
         Channel::play(Channel(-1), &sdl_state.shot, 0).ok();
     }
@@ -435,6 +447,10 @@ fn main() -> Result<(), String> {
     let tex_creator = canvas.texture_creator();
     let mut events = sdl_context.event_pump()?;
 
+    // need to poll for events once so that canvas.window().drawable_size gives the correct window size.
+    events.wait_event_timeout(0);
+    let pixel_coords = init_pixel_coords(&canvas)?;
+
     let font = ttf_context.load_font("Roboto-Regular.ttf", 32)?;
 
     let wow = Chunk::from_file("media/wow.mp3")?;
@@ -448,7 +464,9 @@ fn main() -> Result<(), String> {
         wow,
         shot,
         hitmarker,
+        pixel_coords,
     };
+
     let mut state = CalibrationState::new();
 
     'event_loop: loop {
