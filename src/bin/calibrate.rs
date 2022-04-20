@@ -1,10 +1,11 @@
+use std::fs::File;
 use std::time::Duration;
 use std::{fmt, thread};
 use std::{fs::OpenOptions, io::Read};
 
 use egalax_rs::config::{MonitorAreaDesignator, MonitorConfig, MonitorConfigBuilder};
 use egalax_rs::geo::{Point, AABB};
-use sdl2::event::Event;
+use sdl2::event::{Event, EventSender};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadTexture;
 use sdl2::keyboard::Keycode;
@@ -348,30 +349,46 @@ fn process_sdl_events(
     state: &mut CalibrationState,
     events: &mut EventPump,
 ) -> Result<bool, String> {
-    let event = events.wait_event_timeout(100);
+    events.pump_events();
+    let event = events.wait_event();
 
-    match event {
-        Some(Event::Quit { .. }) => {
-            return Ok(true);
-        }
-
-        Some(Event::KeyDown {
-            keycode: Some(keycode),
-            ..
-        }) => match keycode {
-            Keycode::Escape | Keycode::Q => {
+    if event.is_user_event() {
+        let packet = event
+            .as_user_event_type::<Packet>()
+            .ok_or(String::from("Unexpected custom event"))?;
+        match state.calibration_stage {
+            CalibrationStage::Ongoing { .. } => {
+                calibrate_with_packet(sdl_state, state, packet)?;
+            }
+            CalibrationStage::Finished { monitor_cfg, .. } => {
+                let decal = get_decal(&monitor_cfg, packet);
+                state.decals.push(decal);
+            }
+        };
+    } else {
+        match event {
+            Event::Quit { .. } => {
                 return Ok(true);
             }
-            Keycode::S => {
-                if let CalibrationStage::Finished { cfg_builder, .. } = &state.calibration_stage {
-                    save_calibration(&sdl_state, cfg_builder)?;
-                }
-            }
-            Keycode::R => *state = CalibrationState::new(),
-            _ => {}
-        },
 
-        _ => {}
+            Event::KeyDown {
+                keycode: Some(keycode),
+                ..
+            } => match keycode {
+                Keycode::Escape | Keycode::Q => {
+                    return Ok(true);
+                }
+                Keycode::S => {
+                    if let CalibrationStage::Finished { cfg_builder, .. } = &state.calibration_stage
+                    {
+                        save_calibration(&sdl_state, cfg_builder)?;
+                    }
+                }
+                Keycode::R => *state = CalibrationState::new(),
+                _ => {}
+            },
+            _ => {}
+        }
     }
 
     Ok(false)
@@ -420,6 +437,25 @@ fn get_decal(monitor_cfg: &MonitorConfig, packet: Packet) -> Point {
     p
 }
 
+fn hidraw_reader(mut device_node: File, sender: EventSender) -> Result<(), String> {
+    // try to read packets from hidraw which we either use to calibrate or to visualize the finished calibration
+    loop {
+        let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
+        let read_bytes = device_node
+            .read(&mut raw_packet)
+            .map_err(|e| e.to_string())?;
+
+        if read_bytes > 0 {
+            if read_bytes != RAW_PACKET_LEN {
+                return Err(String::from("Did not read enough bytes"));
+            }
+
+            let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
+            sender.push_custom_event(packet)?;
+        }
+    }
+}
+
 fn main() -> Result<(), String> {
     env_logger::init();
 
@@ -427,7 +463,7 @@ fn main() -> Result<(), String> {
 
     let node_path = std::env::args().nth(1).expect(usage);
     log::info!("Using raw device node '{}'", node_path);
-    let mut device_node = OpenOptions::new().read(true).open(&node_path).unwrap();
+    let device_node = OpenOptions::new().read(true).open(&node_path).unwrap();
 
     let sdl_context = sdl2::init()?;
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
@@ -443,12 +479,18 @@ fn main() -> Result<(), String> {
     let _image_context =
         sdl2::image::init(sdl2::image::InitFlag::JPG).map_err(|e| e.to_string())?;
 
+    let ev = sdl_context.event()?;
+    ev.register_custom_event::<Packet>()?;
+    // the sender is the part of the event subsystem that implements the Send trait
+    let sender = ev.event_sender();
+    let hidraw_thread = thread::spawn(move || hidraw_reader(device_node, sender));
+
     let canvas = init_canvas(&sdl_context)?;
     let tex_creator = canvas.texture_creator();
     let mut events = sdl_context.event_pump()?;
 
-    // need to poll for events once so that canvas.window().drawable_size gives the correct window size.
-    events.wait_event_timeout(0);
+    // need to gather events once so that canvas.window().drawable_size gives the correct window size.
+    events.pump_events();
     let pixel_coords = init_pixel_coords(&canvas)?;
 
     let font = ttf_context.load_font("Roboto-Regular.ttf", 32)?;
@@ -468,6 +510,7 @@ fn main() -> Result<(), String> {
     };
 
     let mut state = CalibrationState::new();
+    render(&mut sdl_state, &state)?;
 
     'event_loop: loop {
         // first process sdl window/input events
@@ -475,32 +518,10 @@ fn main() -> Result<(), String> {
             break 'event_loop;
         }
 
-        // then try to read packets from hidraw which we either use to calibrate or to visualize the finished calibration
-
-        let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
-        let read_bytes = device_node
-            .read(&mut raw_packet)
-            .map_err(|e| e.to_string())?;
-
-        if read_bytes > 0 {
-            if read_bytes != RAW_PACKET_LEN {
-                return Err(String::from("Did not read neough bytes"));
-            }
-
-            let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
-            match state.calibration_stage {
-                CalibrationStage::Ongoing { .. } => {
-                    calibrate_with_packet(&sdl_state, &mut state, packet)?;
-                }
-                CalibrationStage::Finished { monitor_cfg, .. } => {
-                    let decal = get_decal(&monitor_cfg, packet);
-                    state.decals.push(decal);
-                }
-            }
-        }
         render(&mut sdl_state, &state)?;
         thread::sleep(Duration::from_millis(10));
     }
 
+    hidraw_thread.join().ok();
     Ok(())
 }
