@@ -3,21 +3,22 @@ use std::time::Duration;
 use std::{fmt, thread};
 use std::{fs::OpenOptions, io::Read};
 
-use egalax_rs::config::{MonitorAreaDesignator, MonitorConfig, MonitorConfigBuilder};
+#[cfg(feature = "audio")]
+use egalax_rs::audio::{init_sound, Sound, Sounds};
+use egalax_rs::config::{MonitorConfig, MonitorConfigBuilder, MonitorDesignator};
 use egalax_rs::geo::{Point, AABB};
+use egalax_rs::protocol::{Packet, RawPacket, TouchState, RAW_PACKET_LEN};
+
 use sdl2::event::{Event, EventSender};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadTexture;
 use sdl2::keyboard::Keycode;
-use sdl2::mixer::{Channel, Chunk};
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::ttf::Font;
 use sdl2::video::{Window, WindowContext};
-use sdl2::Sdl;
+use sdl2::VideoSubsystem;
 use sdl2::{pixels, EventPump};
-
-use egalax_rs::protocol::{Packet, RawPacket, TouchState, RAW_PACKET_LEN};
 
 /// Number of calibration points
 const STAGE_MAX: usize = 4;
@@ -33,9 +34,9 @@ enum CalibrationStage {
     },
     Finished {
         /// The final config builder that is persisted
-        cfg_builder: MonitorConfigBuilder,
+        saved_config: MonitorConfigBuilder,
         /// The final config to be used.
-        monitor_cfg: MonitorConfig,
+        decal_config: MonitorConfig,
     },
 }
 
@@ -49,6 +50,7 @@ impl Default for CalibrationStage {
 }
 
 impl CalibrationStage {
+    #[allow(dead_code)]
     fn is_ongoing(&self) -> bool {
         match self {
             CalibrationStage::Ongoing { .. } => true,
@@ -127,6 +129,7 @@ impl CalibrationState {
     /// Switches the given calibration stage to Finished if necessary.
     fn advance(
         &mut self,
+        _sdl_state: &SdlState,
         coord: Point,
         pixel_coords: &[(i32, i32); STAGE_MAX],
     ) -> Result<(), String> {
@@ -144,13 +147,19 @@ impl CalibrationState {
                         return Err(String::from("Number of calibration points must be 4"));
                     }
 
-                    // TODO don't hardcode
-                    let monitor_area_designator = MonitorAreaDesignator::Area(AABB::new(
+                    // TODO the source code at https://github.com/libsdl-org/SDL/blob/main/src/video/SDL_video.c
+                    // suggests this would give us the xrandr name of the display where the program is running.
+                    // But last time we tested, the index always returned 0, and the resulting name was always the string "0".
+                    // let display_index = sdl_state.canvas.window().display_index()?;
+                    // let monitor_name = sdl_state.video_subsystem.display_name(display_index)?;
+
+                    // TODO use pixel_coords[1,2] too
+                    let calibrated_area = AABB::new(
                         pixel_coords[0].0,
                         pixel_coords[0].1,
                         pixel_coords[3].0,
                         pixel_coords[3].1,
-                    ));
+                    );
 
                     // TODO don't just take entries 0 and 3. should we average them with entries 1 & 2?
                     let calibration_points = AABB::new(
@@ -159,18 +168,26 @@ impl CalibrationState {
                         touch_coords[3].x.value(),
                         touch_coords[3].y.value(),
                     );
-                    let cfg_builder =
-                        MonitorConfigBuilder::new(monitor_area_designator, calibration_points);
-                    let monitor_cfg = cfg_builder.clone().build().map_err(|e| e.to_string())?;
-
-                    println!(
-                        "Using config builder {:#?} and config {:#?}",
-                        cfg_builder, monitor_cfg
+                    let saved_config = MonitorConfigBuilder::new(
+                        MonitorDesignator::Named(String::from("changeme")),
+                        Some(calibrated_area),
+                        calibration_points,
                     );
 
+                    // During the calibration we want to translate into window coordinates.
+                    // So we use the calibrated area as the monitor area as out interpolation target.
+                    let decal_config = MonitorConfig {
+                        screen_space: AABB::default(),
+                        monitor_area: calibrated_area,
+                        calibration_points,
+                    };
+
+                    log::info!("Using config builder {:#?}", saved_config);
+                    log::info!("Using config fow showing decals {:#?}", decal_config);
+
                     self.calibration_stage = CalibrationStage::Finished {
-                        cfg_builder,
-                        monitor_cfg,
+                        saved_config,
+                        decal_config,
                     };
                 }
 
@@ -182,20 +199,21 @@ impl CalibrationState {
 }
 
 struct SdlState<'ttf, 'tex> {
+    #[allow(dead_code)]
+    video_subsystem: VideoSubsystem,
     // sdl_context: Sdl,
     // ttf_context: &'ttf Sdl2TtfContext,
     canvas: Canvas<Window>,
     /// Pixel coordinates of calibration points.
     pixel_coords: [(i32, i32); STAGE_MAX],
     font: Font<'ttf, 'static>,
-    wow: Chunk,
-    shot: Chunk,
+    #[cfg(feature = "audio")]
+    sounds: Sounds,
     hitmarker: Texture<'tex>,
 }
 
 /// Initialize the sdl canvas and create a window.
-fn init_canvas(sdl_context: &Sdl) -> Result<Canvas<Window>, String> {
-    let video_subsystem = sdl_context.video()?;
+fn init_canvas(video_subsystem: &VideoSubsystem) -> Result<Canvas<Window>, String> {
     let window = video_subsystem
         .window("egalax-rs calibration", 0, 0)
         .fullscreen_desktop()
@@ -332,14 +350,19 @@ fn render(sdl_state: &mut SdlState, state: &CalibrationState) -> Result<(), Stri
 }
 
 /// Save the calibration state to a config file
-fn save_calibration(sdl_state: &SdlState, config: &MonitorConfigBuilder) -> Result<(), String> {
+fn save_calibration(
+    #[cfg_attr(not(feature = "audio"), allow(unused_variables))] sdl_state: &SdlState,
+    config: &MonitorConfigBuilder,
+) -> Result<(), String> {
     let f = OpenOptions::new()
         .write(true)
+        .truncate(true)
         .open("./config")
         .map_err(|e| e.to_string())?;
     serde_lexpr::to_writer(f, &config).map_err(|e| e.to_string())?;
 
-    Channel::play(Channel(-1), &sdl_state.wow, 0).ok();
+    #[cfg(feature = "audio")]
+    sdl_state.sounds.play(Sound::Wow);
 
     Ok(())
 }
@@ -360,7 +383,10 @@ fn process_sdl_events(
             CalibrationStage::Ongoing { .. } => {
                 calibrate_with_packet(sdl_state, state, packet)?;
             }
-            CalibrationStage::Finished { monitor_cfg, .. } => {
+            CalibrationStage::Finished {
+                decal_config: monitor_cfg,
+                ..
+            } => {
                 let decal = get_decal(&monitor_cfg, packet);
                 state.decals.push(decal);
             }
@@ -379,7 +405,10 @@ fn process_sdl_events(
                     return Ok(true);
                 }
                 Keycode::S => {
-                    if let CalibrationStage::Finished { cfg_builder, .. } = &state.calibration_stage
+                    if let CalibrationStage::Finished {
+                        saved_config: cfg_builder,
+                        ..
+                    } = &state.calibration_stage
                     {
                         save_calibration(&sdl_state, cfg_builder)?;
                     }
@@ -410,9 +439,10 @@ fn calibrate_with_packet(
         let coord = state.touch_cloud.compute_touch_coord();
         println!("set calibration point to {:?}", coord);
         state.touch_cloud.clear();
-        state.advance(coord, &sdl_state.pixel_coords)?;
+        state.advance(sdl_state, coord, &sdl_state.pixel_coords)?;
 
-        Channel::play(Channel(-1), &sdl_state.shot, 0).ok();
+        #[cfg(feature = "audio")]
+        sdl_state.sounds.play(Sound::Shot);
     }
     state.touch_state = packet.touch_state();
 
@@ -467,15 +497,8 @@ fn main() -> Result<(), String> {
 
     let sdl_context = sdl2::init()?;
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
-    let _mixer_context =
-        sdl2::mixer::init(sdl2::mixer::InitFlag::MP3).map_err(|e| e.to_string())?;
-    // need to "open an audio device" to be able to load chunks, i.e. sound effects below
-    sdl2::mixer::open_audio(
-        44100,
-        sdl2::mixer::DEFAULT_FORMAT,
-        sdl2::mixer::DEFAULT_CHANNELS,
-        1024,
-    )?;
+    #[cfg(feature = "audio")]
+    let sounds = init_sound()?;
     let _image_context =
         sdl2::image::init(sdl2::image::InitFlag::JPG).map_err(|e| e.to_string())?;
 
@@ -483,9 +506,10 @@ fn main() -> Result<(), String> {
     ev.register_custom_event::<Packet>()?;
     // the sender is the part of the event subsystem that implements the Send trait
     let sender = ev.event_sender();
-    let hidraw_thread = thread::spawn(move || hidraw_reader(device_node, sender));
+    let _hidraw_thread = thread::spawn(move || hidraw_reader(device_node, sender));
 
-    let canvas = init_canvas(&sdl_context)?;
+    let video_subsystem = sdl_context.video()?;
+    let canvas = init_canvas(&video_subsystem)?;
     let tex_creator = canvas.texture_creator();
     let mut events = sdl_context.event_pump()?;
 
@@ -495,16 +519,14 @@ fn main() -> Result<(), String> {
 
     let font = ttf_context.load_font("Roboto-Regular.ttf", 32)?;
 
-    let wow = Chunk::from_file("media/wow.mp3")?;
-    let shot = Chunk::from_file("media/shot.mp3")?;
-
     let hitmarker = tex_creator.load_texture("media/hitmarker.png")?;
 
     let mut sdl_state: SdlState = SdlState {
+        video_subsystem,
         canvas,
         font,
-        wow,
-        shot,
+        #[cfg(feature = "audio")]
+        sounds,
         hitmarker,
         pixel_coords,
     };
@@ -512,16 +534,17 @@ fn main() -> Result<(), String> {
     let mut state = CalibrationState::new();
     render(&mut sdl_state, &state)?;
 
-    'event_loop: loop {
+    loop {
         // first process sdl window/input events
         if process_sdl_events(&sdl_state, &mut state, &mut events)? {
-            break 'event_loop;
+            break;
         }
 
         render(&mut sdl_state, &state)?;
         thread::sleep(Duration::from_millis(10));
     }
 
-    hidraw_thread.join().ok();
+    // TODO maybe send message to child thread to kill it. but os will kill all threads when main thread exits.
+    // hidraw_thread.join().ok();
     Ok(())
 }

@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use libusb::{request_type, Direction};
-
 struct UsbDevice<'a> {
     handle: libusb::DeviceHandle<'a>,
     language: libusb::Language,

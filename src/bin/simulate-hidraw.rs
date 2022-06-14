@@ -4,6 +4,7 @@ use std::{
     error,
     fs::{self, OpenOptions},
     io::{Cursor, Read, Write},
+    os::unix::prelude::OpenOptionsExt,
     path::PathBuf,
     thread,
     time::Duration,
@@ -11,7 +12,14 @@ use std::{
 use tempdir::TempDir;
 
 fn virtual_sender(data: Vec<u8>, path: PathBuf) {
-    let mut writer = OpenOptions::new().write(true).open(&path).unwrap();
+    // let mut writer = OpenOptions::new().write(true).open(&path).unwrap();
+    thread::sleep(Duration::from_secs(5));
+
+    let mut writer = OpenOptions::new()
+        .write(true)
+        .custom_flags(nix::fcntl::OFlag::O_NONBLOCK.bits())
+        .open(&path)
+        .unwrap();
     let mut hidraw = Cursor::new(data);
     let mut buf = [0; 6];
 
@@ -42,12 +50,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     // we want to read blocking, so we need to open reader as blocking.
     // therefore we need to open the writer in another thread, so that they can unblock each other.
     // we cannot open both reader and writer in the same thread, if writer is blocking we have a deadlock, if write is nonblocking, opening returns an error
-    thread::spawn(move || virtual_sender(hidraw, path1));
 
+    thread::spawn(move || virtual_sender(hidraw, path1));
     let reader = OpenOptions::new().read(true).open(&path).unwrap();
-    let monitor_cfg = MonitorConfigBuilder::default()
-        .with_name(String::from("eDP"))
-        .build()?;
+    let monitor_cfg = MonitorConfigBuilder::default().build()?;
     println!("setup complete");
 
     virtual_mouse(reader, monitor_cfg)?;

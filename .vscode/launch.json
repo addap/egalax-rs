@@ -1,0 +1,626 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'egalax-rs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "egalax-rs",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'egalax-rs'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=egalax-rs",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "egalax-rs",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "/dev/hidraw0",
+            ],
+            "env": {
+                "RUST_LOG": "debug"
+            },
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'egalax-rs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=egalax-rs",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "egalax-rs",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'packet-test'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=packet-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "packet-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'packet-test'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=packet-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "packet-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'vmouse'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=vmouse",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "vmouse",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'vmouse'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=vmouse",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "vmouse",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'gen-config'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=gen-config",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "gen-config",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'gen-config'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=gen-config",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "gen-config",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'print-hidraw'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=print-hidraw",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "print-hidraw",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'print-hidraw'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=print-hidraw",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "print-hidraw",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'xrandr-test'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=xrandr-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "xrandr-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'xrandr-test'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=xrandr-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "xrandr-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'simulate-hidraw'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=simulate-hidraw",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "simulate-hidraw",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'simulate-hidraw'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=simulate-hidraw",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "simulate-hidraw",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'vkbd'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=vkbd",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "vkbd",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'vkbd'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=vkbd",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "vkbd",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'fifo-test'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=fifo-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "fifo-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'fifo-test'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=fifo-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "fifo-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'libudev-test'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=libudev-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "libudev-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'libudev-test'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=libudev-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "libudev-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'libusb-test'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=libusb-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "libusb-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'libusb-test'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=libusb-test",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "libusb-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'mouse-input-linux-abs'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=mouse-input-linux-abs",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "mouse-input-linux-abs",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'mouse-input-linux-abs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=mouse-input-linux-abs",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "mouse-input-linux-abs",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'vmouse-abs'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=vmouse-abs",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "vmouse-abs",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'vmouse-abs'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=vmouse-abs",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "vmouse-abs",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'calibrate'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=calibrate",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "calibrate",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "/dev/hidraw0"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'calibrate'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=calibrate",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "calibrate",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'mouse-input-linux'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=mouse-input-linux",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "mouse-input-linux",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'mouse-input-linux'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=mouse-input-linux",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "mouse-input-linux",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'xrandr-read'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=xrandr-read",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "xrandr-read",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'xrandr-read'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=xrandr-read",
+                    "--package=egalax-rs"
+                ],
+                "filter": {
+                    "name": "xrandr-read",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

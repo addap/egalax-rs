@@ -1,2 +1,1 @@
-((monitor_area_designator Area (x1 . 100) (y1 . 100) (x2 . 1820) (y2 . 980)) (calibration_points (x1 . 309) (y1 . 312) (x2 . 3735) (y2 . 3735))). 980))) . 0))
-)
+((monitor_designator Named . "changeme") (calibrated_area ((x1 . 128) (y1 . 102) (x2 . 1152) (y2 . 921))) (calibration_points (x1 . 611) (y1 . 643) (x2 . 3401) (y2 . 3419)))

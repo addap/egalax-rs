@@ -179,6 +179,8 @@ impl EventGen {
     fn emit_move_x(&mut self, x: dimX, monitor_cfg: &MonitorConfig) {
         let t = monitor_cfg.calibration_points.x().linear_factor(x);
         let xm = monitor_cfg.monitor_area.x().lerp(t);
+
+        log::info!("Moving to x {}", xm.value());
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_X),
@@ -189,6 +191,8 @@ impl EventGen {
     fn emit_move_y(&mut self, y: dimY, monitor_cfg: &MonitorConfig) {
         let t = monitor_cfg.calibration_points.y().linear_factor(y);
         let ym = monitor_cfg.monitor_area.y().lerp(t);
+
+        log::info!("Moving to y {}", ym.value());
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_Y),
@@ -220,10 +224,12 @@ struct DriverState {
 }
 
 impl DriverState {
+    #[allow(dead_code)]
     pub fn touch_state(&self) -> TouchState {
         self.touch_state
     }
 
+    #[allow(dead_code)]
     pub fn x(&self) -> dimX {
         self.p.x
     }
@@ -232,6 +238,7 @@ impl DriverState {
         self.p.x = x;
     }
 
+    #[allow(dead_code)]
     pub fn y(&self) -> dimY {
         self.p.y
     }
@@ -351,18 +358,13 @@ pub fn virtual_mouse(
 ) -> Result<(), EgalaxError> {
     let mut driver = Driver::new(monitor_cfg);
     let vm = driver.get_virtual_device()?;
-    // log::info!(
-    //     "Successfully set up virtual input device with device node {}",
-    //     if let Some(devnode) = vm.devnode() {
-    //         devnode
-    //     } else {
-    //         "<unknown>"
-    //     }
-    // );
+    log::info!(
+        "Successfully set up virtual input device with device node {}",
+        vm.devnode().unwrap_or("<unknown>")
+    );
 
     let mut process_packet = |packet| {
         let events = driver.update(packet);
-        // log::info!("Updated internal state and sending input events to device.");
         driver.send_events(&vm, &events)
     };
     process_packets(&mut stream, &mut process_packet)

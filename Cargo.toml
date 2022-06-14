@@ -20,3 +20,8 @@ libudev = "0.3.0"
 serde = { version = "1.0", features = ["derive"] }
 serde-lexpr = "0.1.0"
 sdl2 = { version = "0.35", default-features = false, features = ["gfx", "ttf", "mixer", "image"] }
+sdl2-sys = "0.35"
+
+[features]
+default = ["audio"]
+audio = []

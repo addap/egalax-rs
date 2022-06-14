@@ -65,7 +65,7 @@ impl<T: Dim> Range<T> {
         // println!("a: {}\tb: {}\tc: {}", a, b, self);
         let t = ((self.max.value() - x.value()) as f64)
             / ((self.max.value() - self.min.value()) as f64);
-        // println!("linear factor: {}", t);
+        println!("linear factor: {}", t);
         t
     }
 
@@ -101,6 +101,7 @@ impl<T: Dim> From<(UdimRepr, UdimRepr)> for Range<T> {
 }
 
 /// An axis-aligned bounding box consisting of an upper left corner (x1, y1) and lower right corner (x2, y2)
+/// TODO use udim
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct AABB {
     x1: UdimRepr,
@@ -141,6 +142,11 @@ impl AABB {
             x2: max(self.x2, point.x.value()),
             y2: max(self.y2, point.y.value()),
         }
+    }
+
+    /// Shift x1,x2 by x and y1,y2 by y
+    pub fn shift(self, x: UdimRepr, y: UdimRepr) -> Self {
+        AABB::new(self.x1 + x, self.y1 + y, self.x2 + x, self.y2 + y)
     }
 
     pub fn x(&self) -> Range<DimX> {

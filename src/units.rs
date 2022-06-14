@@ -29,14 +29,6 @@ impl<T: Dim> udim<T> {
     }
 }
 
-// impl<T: Dim + PartialEq> Eq for udim<T> {}
-
-// impl<T: Dim + PartialOrd> Ord for udim<T> {
-//     fn cmp(&self, other: &Self) -> Ordering {
-//         <UdimRepr as Ord>::cmp(&self.1, &other.1)
-//     }
-// }
-
 impl<T: Dim> fmt::Display for udim<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.1.fmt(f)
