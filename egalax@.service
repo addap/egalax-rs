@@ -3,6 +3,7 @@ Description=Device for egalax touchscreen
 
 [Service]
 Type=simple
-Environment="RUST_LOG=debug"
+WorkingDirectory=/home/pi/egalax-rs
+Environment="RUST_LOG=info"
 #ExecStart=/home/adrian/info.sh %I
-ExecStart=/home/adrian/programming/rust/egalax-rs/target/debug/egalax-rs %I
+ExecStart=/home/pi/.cargo/bin/egalax-rs %I

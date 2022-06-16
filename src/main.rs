@@ -4,7 +4,9 @@ use std::result::Result;
 use std::{error, fs::OpenOptions};
 
 fn main() -> Result<(), Box<dyn error::Error>> {
+    println!("Initialize logger.");
     env_logger::init();
+    log::info!("Initialized logger.");
 
     let usage = "usage: sudo ./target/debug/egalax-rs /dev/hidraw0";
 
@@ -13,7 +15,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let device_node = OpenOptions::new().read(true).open(&node_path).unwrap();
 
     let monitor_cfg =
-        MonitorConfigBuilder::from_file("/home/adrian/programming/rust/egalax-rs/config")?
+        MonitorConfigBuilder::from_file("./config")?
             .build()?;
     log::info!("Using monitor config {}", monitor_cfg);
 

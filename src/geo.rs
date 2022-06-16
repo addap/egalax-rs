@@ -65,7 +65,7 @@ impl<T: Dim> Range<T> {
         // println!("a: {}\tb: {}\tc: {}", a, b, self);
         let t = ((self.max.value() - x.value()) as f64)
             / ((self.max.value() - self.min.value()) as f64);
-        println!("linear factor: {}", t);
+        // println!("linear factor: {}", t);
         t
     }
 
