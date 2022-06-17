@@ -517,7 +517,7 @@ fn main() -> Result<(), String> {
     events.pump_events();
     let pixel_coords = init_pixel_coords(&canvas)?;
 
-    let font = ttf_context.load_font("Roboto-Regular.ttf", 32)?;
+    let font = ttf_context.load_font("media/Roboto-Regular.ttf", 32)?;
 
     let hitmarker = tex_creator.load_texture("media/hitmarker.png")?;
 
