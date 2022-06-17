@@ -8,7 +8,7 @@ $ sudo apt install libudev-dev libxrandr-dev libx11-dev libevdev-dev libsdl2-dev
 $ cargo build
 $ cargo install --path .
 ```
-Put the udev `.rules` files in `/etc/udev/rules.d` and the `egalax@.service` unit file in `~/.config/systemd/user`.
+Put the udev `.rules` files in `/etc/udev/rules.d` and the `egalax.service` unit file in `/etc/systemd/system/`.
 
 ## File Structure
 
