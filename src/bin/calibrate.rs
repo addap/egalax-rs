@@ -7,7 +7,7 @@ use std::{fs::OpenOptions, io::Read};
 use egalax_rs::audio::{init_sound, Sound, Sounds};
 use egalax_rs::config::{MonitorConfig, MonitorConfigBuilder, MonitorDesignator};
 use egalax_rs::geo::{Point, AABB};
-use egalax_rs::protocol::{Packet, RawPacket, TouchState, RAW_PACKET_LEN};
+use egalax_rs::protocol::{MessageType, Packet, RawPacket, TouchState, RAW_PACKET_LEN};
 
 use sdl2::event::{Event, EventSender};
 use sdl2::gfx::primitives::DrawRenderer;
@@ -236,7 +236,7 @@ fn init_pixel_coords(canvas: &Canvas<Window>) -> Result<[(i32, i32); STAGE_MAX],
         ((wwidth as f64 * 0.1) as i32, (wheight as f64 * 0.9) as i32),
         ((wwidth as f64 * 0.9) as i32, (wheight as f64 * 0.9) as i32),
     ];
-    println!("{:#?}", pixel_coords);
+    log::info!("{:#?}", pixel_coords);
 
     Ok(pixel_coords)
 }
@@ -430,14 +430,14 @@ fn calibrate_with_packet(
 ) -> Result<(), String> {
     // If we are still in one of the four calibration stages we collect the calibration points
     let p = (packet.x(), packet.y()).into();
-    println!("calibration point {:?}", p);
+    log::info!("calibration point {:?}", p);
 
     state.touch_cloud.push(p);
     if let (TouchState::IsTouching, TouchState::NotTouching) =
         (state.touch_state, packet.touch_state())
     {
         let coord = state.touch_cloud.compute_touch_coord();
-        println!("set calibration point to {:?}", coord);
+        log::info!("Set calibration point to {:?}", coord);
         state.touch_cloud.clear();
         state.advance(sdl_state, coord, &sdl_state.pixel_coords)?;
 
@@ -458,7 +458,7 @@ fn get_decal(monitor_cfg: &MonitorConfig, packet: Packet) -> Point {
 
     let p = Point { x, y };
 
-    println!(
+    log::info!(
         "Packet at ({}, {}) results in decal at {:?}",
         packet.x(),
         packet.y(),
@@ -470,9 +470,9 @@ fn get_decal(monitor_cfg: &MonitorConfig, packet: Packet) -> Point {
 fn hidraw_reader(mut device_node: File, sender: EventSender) -> Result<(), String> {
     // try to read packets from hidraw which we either use to calibrate or to visualize the finished calibration
     loop {
-        let mut raw_packet: RawPacket = [0; RAW_PACKET_LEN];
+        let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
         let read_bytes = device_node
-            .read(&mut raw_packet)
+            .read(&mut raw_packet.0)
             .map_err(|e| e.to_string())?;
 
         if read_bytes > 0 {
@@ -480,7 +480,8 @@ fn hidraw_reader(mut device_node: File, sender: EventSender) -> Result<(), Strin
                 return Err(String::from("Did not read enough bytes"));
             }
 
-            let packet = Packet::try_from(raw_packet).map_err(|e| e.to_string())?;
+            let packet = Packet::try_parse(raw_packet, Some(MessageType::TouchEvent))
+                .map_err(|e| e.to_string())?;
             sender.push_custom_event(packet)?;
         }
     }

@@ -62,10 +62,8 @@ impl<T: Dim> Range<T> {
         // solve for t
         // self = t * a + (1 - t) * b
         // => t = (b - self)/(b - a)
-        // println!("a: {}\tb: {}\tc: {}", a, b, self);
         let t = ((self.max.value() - x.value()) as f64)
             / ((self.max.value() - self.min.value()) as f64);
-        // println!("linear factor: {}", t);
         t
     }
 

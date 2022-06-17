@@ -4,7 +4,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use xrandr::{Monitor, XHandle};
 
-use crate::{driver::EgalaxError, geo::AABB};
+use crate::{error::EgalaxError, geo::AABB};
 
 /// Parameters needed to translate the touch event coordinates coming from the monitor to coordinates in X's screen space.
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -54,16 +54,24 @@ impl MonitorConfigBuilder {
     where
         P: AsRef<Path>,
     {
+        log::debug!("Entering MonitorConfigBuilder::from_file");
+
         let f = OpenOptions::new().read(true).open(path)?;
         let config_file = serde_lexpr::from_reader(f)?;
+        log::info!("Using config file '{:?}'", config_file);
+
+        log::debug!("Leaving MonitorConfigBuilder::from_file");
         Ok(config_file)
     }
 
     pub fn build(self) -> Result<MonitorConfig, EgalaxError> {
+        log::debug!("Entering MonitorConfigBuilder::build");
+
         let monitors = XHandle::open()?.monitors()?;
         let screen_space = self.compute_screen_space(&monitors);
         let monitor_area = self.get_monitor_area(&monitors)?;
 
+        log::debug!("Leaving MonitorConfigBuilder::build");
         Ok(MonitorConfig {
             screen_space: screen_space,
             monitor_area: monitor_area,
@@ -90,9 +98,17 @@ impl MonitorConfigBuilder {
         ))?;
 
         if let Some(calibrated_area) = self.calibrated_area {
+            log::info!(
+                "Using calibration {} to offset monitor dimensions ({}, {}).",
+                calibrated_area,
+                monitor.x,
+                monitor.y
+            );
             Ok(calibrated_area.shift(monitor.x, monitor.y))
         } else {
-            Ok(AABB::from(monitor))
+            let area = AABB::from(monitor);
+            log::info!("Using uncalibrated monitor's total dimensions {}", area);
+            Ok(area)
         }
     }
 }

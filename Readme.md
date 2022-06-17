@@ -460,12 +460,6 @@ kernel (usbhid module/custom kernel module that just passes on events to userspa
 physical device (via interrupt)
 ```
 
-3. How the eGalax driver works
-```
-maybe the same as 2 but using their binary /bin/eGTouchD instead of our rust program
-```
-
-
 
 ## TODO
 - [x] use `usb-devices` while monitor is connected to check if it lists `usbhid`. Yes, so it does use the `usbhid` driver.
