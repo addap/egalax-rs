@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min},
     fmt,
-    ops::Add,
+    ops::{Add, Sub},
 };
 
 use crate::units::*;
@@ -48,6 +48,14 @@ impl From<(UdimRepr, UdimRepr)> for Point {
             x: x.into(),
             y: y.into(),
         }
+    }
+}
+
+impl Sub for Point {
+    type Output = (dimX, dimY);
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        (self.x - rhs.x, self.y - rhs.y)
     }
 }
 

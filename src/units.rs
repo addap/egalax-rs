@@ -1,4 +1,8 @@
-use std::{fmt, marker::PhantomData};
+use std::{
+    fmt,
+    marker::PhantomData,
+    ops::{Add, Sub},
+};
 
 pub trait Dim {}
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -56,8 +60,24 @@ impl<T: Dim> From<f64> for udim<T> {
     }
 }
 
-impl<T: Dim> From<&udim<T>> for i32 {
-    fn from(d: &udim<T>) -> Self {
+impl<T: Dim> From<udim<T>> for i32 {
+    fn from(d: udim<T>) -> Self {
         d.1 as i32
+    }
+}
+
+impl<T: Dim> Add for udim<T> {
+    type Output = udim<T>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        (self.1 + rhs.1).into()
+    }
+}
+
+impl<T: Dim> Sub for udim<T> {
+    type Output = udim<T>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        (self.1 - rhs.1).into()
     }
 }

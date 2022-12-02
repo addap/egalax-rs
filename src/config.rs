@@ -7,6 +7,17 @@ use xrandr::{Monitor, XHandle};
 use crate::{error::EgalaxError, geo::AABB};
 
 /// Parameters needed to translate the touch event coordinates coming from the monitor to coordinates in X's screen space.
+///
+/// X has a virtual total screen space consisting of all connected displays. We have to move the mouse using absolute coordinates in this screen space.
+/// Therefore, to compute the physical touch coordinates we need to know the calibration points of the touchscreen.
+/// And to translate the phsyical touch coordinates into screen space coordinates we need to know the monitor area within the total screen space.
+///
+/// physical      screen space
+/// +-----+      +-----+
+/// |  A  |      |  A  +----+
+/// |     | ---> |     | B  |
+/// +-----+      +-----+----+
+///   _+_
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct MonitorConfig {
     /// Total virtual screen space in pixels. the union of all screen spaces of connected displays.
@@ -28,28 +39,24 @@ impl fmt::Display for MonitorConfig {
     }
 }
 
+/// Representation of config file which can be used to build a [MonitorConfig]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MonitorConfigBuilder {
     /// Name of the xrandr output of the monitor on which touch events will be interpreted.
     monitor_designator: MonitorDesignator,
-    calibrated_area: Option<AABB>,
     /// The coordinates of the calibration points in the coordinate system of the touch screen (appears to be physically in units of 0.1mm).
     calibration_points: AABB,
 }
 
 impl MonitorConfigBuilder {
-    pub fn new(
-        monitor_designator: MonitorDesignator,
-        calibrated_area: Option<AABB>,
-        calibration_points: AABB,
-    ) -> Self {
+    pub fn new(monitor_designator: MonitorDesignator, calibration_points: AABB) -> Self {
         MonitorConfigBuilder {
             monitor_designator,
-            calibrated_area,
             calibration_points,
         }
     }
 
+    /// Load config from file.
     pub fn from_file<P>(path: P) -> Result<Self, EgalaxError>
     where
         P: AsRef<Path>,
@@ -64,6 +71,7 @@ impl MonitorConfigBuilder {
         Ok(config_file)
     }
 
+    /// Query info from Xrandr to build a [MonitorConfig].
     pub fn build(self) -> Result<MonitorConfig, EgalaxError> {
         log::debug!("Entering MonitorConfigBuilder::build");
 
@@ -79,6 +87,7 @@ impl MonitorConfigBuilder {
         })
     }
 
+    /// Union screen spaces of all monitors to get total screen space used by X.
     fn compute_screen_space(&self, monitors: &[Monitor]) -> AABB {
         monitors
             .iter()
@@ -86,6 +95,7 @@ impl MonitorConfigBuilder {
             .fold(AABB::default(), AABB::union)
     }
 
+    /// Get only the screen space of the touchscreen monitor.
     fn get_monitor_area(&self, monitors: &[Monitor]) -> Result<AABB, EgalaxError> {
         let monitor = match &self.monitor_designator {
             MonitorDesignator::Primary => monitors.iter().find(|monitor| monitor.is_primary),
@@ -97,19 +107,9 @@ impl MonitorConfigBuilder {
             self.monitor_designator.to_string(),
         ))?;
 
-        if let Some(calibrated_area) = self.calibrated_area {
-            log::info!(
-                "Using calibration {} to offset monitor dimensions ({}, {}).",
-                calibrated_area,
-                monitor.x,
-                monitor.y
-            );
-            Ok(calibrated_area.shift(monitor.x, monitor.y))
-        } else {
-            let area = AABB::from(monitor);
-            log::info!("Using uncalibrated monitor's total dimensions {}", area);
-            Ok(area)
-        }
+        let area = AABB::from(monitor);
+        log::info!("Using uncalibrated monitor's total dimensions {}", area);
+        Ok(area)
     }
 }
 
@@ -117,7 +117,6 @@ impl Default for MonitorConfigBuilder {
     fn default() -> Self {
         Self {
             monitor_designator: MonitorDesignator::Primary,
-            calibrated_area: None,
             calibration_points: AABB::new(300, 300, 3800, 3800),
         }
     }

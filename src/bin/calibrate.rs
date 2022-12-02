@@ -1,4 +1,8 @@
+//! Calibration program for the egalax-rs driver using SDL2
+
+use std::collections::VecDeque;
 use std::fs::File;
+use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 use std::{fmt, thread};
 use std::{fs::OpenOptions, io::Read};
@@ -22,6 +26,8 @@ use sdl2::{pixels, EventPump};
 
 /// Number of calibration points
 const STAGE_MAX: usize = 4;
+/// Number of decals recorded
+const DECALS_NUM: usize = 25;
 
 /// A stage in the calibration process.
 #[derive(Debug, Clone)]
@@ -112,7 +118,7 @@ struct CalibrationState {
     calibration_stage: CalibrationStage,
     touch_cloud: TouchCloud,
     touch_state: TouchState,
-    decals: Vec<Point>,
+    decals: VecDeque<Point>,
 }
 
 impl CalibrationState {
@@ -121,7 +127,7 @@ impl CalibrationState {
             calibration_stage: CalibrationStage::default(),
             touch_cloud: TouchCloud { v: Vec::new() },
             touch_state: TouchState::NotTouching,
-            decals: Vec::new(),
+            decals: VecDeque::with_capacity(DECALS_NUM),
         }
     }
 
@@ -129,9 +135,9 @@ impl CalibrationState {
     /// Switches the given calibration stage to Finished if necessary.
     fn advance(
         &mut self,
-        _sdl_state: &SdlState,
+        sdl_state: &SdlState,
         coord: Point,
-        pixel_coords: &[(i32, i32); STAGE_MAX],
+        calibration_circle_coords: &[Point; STAGE_MAX],
     ) -> Result<(), String> {
         match &mut self.calibration_stage {
             CalibrationStage::Ongoing {
@@ -153,24 +159,17 @@ impl CalibrationState {
                     // let display_index = sdl_state.canvas.window().display_index()?;
                     // let monitor_name = sdl_state.video_subsystem.display_name(display_index)?;
 
-                    // TODO use pixel_coords[1,2] too
-                    let calibrated_area = AABB::new(
-                        pixel_coords[0].0,
-                        pixel_coords[0].1,
-                        pixel_coords[3].0,
-                        pixel_coords[3].1,
-                    );
-
                     // TODO don't just take entries 0 and 3. should we average them with entries 1 & 2?
+                    let calibration_point_ul = touch_coords[0] - calibration_circle_coords[0];
+                    let calibration_point_lr = touch_coords[3] - calibration_circle_coords[3];
                     let calibration_points = AABB::new(
-                        touch_coords[0].x.value(),
-                        touch_coords[0].y.value(),
-                        touch_coords[3].x.value(),
-                        touch_coords[3].y.value(),
+                        calibration_point_ul.0.into(),
+                        calibration_point_ul.1.into(),
+                        calibration_point_lr.0.into(),
+                        calibration_point_lr.1.into(),
                     );
                     let saved_config = MonitorConfigBuilder::new(
                         MonitorDesignator::Named(String::from("changeme")),
-                        Some(calibrated_area),
                         calibration_points,
                     );
 
@@ -178,7 +177,7 @@ impl CalibrationState {
                     // So we use the calibrated area as the monitor area as out interpolation target.
                     let decal_config = MonitorConfig {
                         screen_space: AABB::default(),
-                        monitor_area: calibrated_area,
+                        monitor_area: sdl_state.monitor_area,
                         calibration_points,
                     };
 
@@ -205,11 +204,12 @@ struct SdlState<'ttf, 'tex> {
     // ttf_context: &'ttf Sdl2TtfContext,
     canvas: Canvas<Window>,
     /// Pixel coordinates of calibration points.
-    pixel_coords: [(i32, i32); STAGE_MAX],
+    pixel_coords: [Point; STAGE_MAX],
     font: Font<'ttf, 'static>,
     #[cfg(feature = "audio")]
     sounds: Sounds,
     hitmarker: Texture<'tex>,
+    monitor_area: AABB,
 }
 
 /// Initialize the sdl canvas and create a window.
@@ -227,14 +227,14 @@ fn init_canvas(video_subsystem: &VideoSubsystem) -> Result<Canvas<Window>, Strin
 }
 
 /// The event pump must have been polled at least calling this function.
-fn init_pixel_coords(canvas: &Canvas<Window>) -> Result<[(i32, i32); STAGE_MAX], String> {
+fn init_pixel_coords(canvas: &Canvas<Window>) -> Result<[Point; STAGE_MAX], String> {
     let (wwidth, wheight) = canvas.window().drawable_size();
 
-    let pixel_coords: [(i32, i32); STAGE_MAX] = [
-        ((wwidth as f64 * 0.1) as i32, (wheight as f64 * 0.1) as i32),
-        ((wwidth as f64 * 0.9) as i32, (wheight as f64 * 0.1) as i32),
-        ((wwidth as f64 * 0.1) as i32, (wheight as f64 * 0.9) as i32),
-        ((wwidth as f64 * 0.9) as i32, (wheight as f64 * 0.9) as i32),
+    let pixel_coords: [Point; STAGE_MAX] = [
+        ((wwidth as f64 * 0.1) as i32, (wheight as f64 * 0.1) as i32).into(),
+        ((wwidth as f64 * 0.9) as i32, (wheight as f64 * 0.1) as i32).into(),
+        ((wwidth as f64 * 0.1) as i32, (wheight as f64 * 0.9) as i32).into(),
+        ((wwidth as f64 * 0.9) as i32, (wheight as f64 * 0.9) as i32).into(),
     ];
     log::info!("{:#?}", pixel_coords);
 
@@ -255,8 +255,8 @@ fn render_circles(sdl_state: &SdlState, state: &CalibrationState) -> Result<(), 
     for (stage, coords) in sdl_state.pixel_coords.iter().enumerate() {
         let color = if stage == current_stage { green } else { red };
 
-        let x = coords.0 as i16;
-        let y = coords.1 as i16;
+        let x = coords.x.value() as i16;
+        let y = coords.y.value() as i16;
         sdl_state.canvas.aa_circle(x, y, 20, color)?;
         sdl_state.canvas.filled_circle(x, y, 20, color)?;
     }
@@ -342,7 +342,12 @@ fn render(sdl_state: &mut SdlState, state: &CalibrationState) -> Result<(), Stri
     sdl_state.canvas.clear();
 
     render_circles(sdl_state, state)?;
-    render_decals(sdl_state, &state.decals)?;
+
+    // Don't care about order of decals so we use both slices of the VecDeque
+    // https://doc.rust-lang.org/std/collections/vec_deque/struct.VecDeque.html#method.as_slices
+    render_decals(sdl_state, state.decals.as_slices().0)?;
+    render_decals(sdl_state, state.decals.as_slices().1)?;
+
     render_menu(sdl_state, state)?;
 
     sdl_state.canvas.present();
@@ -387,8 +392,13 @@ fn process_sdl_events(
                 decal_config: monitor_cfg,
                 ..
             } => {
+                // TODO noise filtering for decals
                 let decal = get_decal(&monitor_cfg, packet);
-                state.decals.push(decal);
+
+                if state.decals.len() == DECALS_NUM {
+                    state.decals.pop_front();
+                }
+                state.decals.push_back(decal);
             }
         };
     } else {
@@ -467,9 +477,18 @@ fn get_decal(monitor_cfg: &MonitorConfig, packet: Packet) -> Point {
     p
 }
 
-fn hidraw_reader(mut device_node: File, sender: EventSender) -> Result<(), String> {
+fn hidraw_reader(
+    mut device_node: File,
+    sender: EventSender,
+    rx: Receiver<()>,
+) -> Result<(), String> {
     // try to read packets from hidraw which we either use to calibrate or to visualize the finished calibration
     loop {
+        // Try to receive the stop signal from the main thread.
+        if let Ok(()) = rx.try_recv() {
+            return Ok(());
+        }
+
         let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
         let read_bytes = device_node
             .read(&mut raw_packet.0)
@@ -506,13 +525,17 @@ fn main() -> Result<(), String> {
     let ev = sdl_context.event()?;
     ev.register_custom_event::<Packet>()?;
     // the sender is the part of the event subsystem that implements the Send trait
-    let sender = ev.event_sender();
-    let _hidraw_thread = thread::spawn(move || hidraw_reader(device_node, sender));
+    let ev_sender = ev.event_sender();
+    let (tx, rx) = mpsc::channel();
+    let hidraw_thread = thread::spawn(move || hidraw_reader(device_node, ev_sender, rx));
 
     let video_subsystem = sdl_context.video()?;
     let canvas = init_canvas(&video_subsystem)?;
     let tex_creator = canvas.texture_creator();
     let mut events = sdl_context.event_pump()?;
+
+    let (wwidth, wheight) = canvas.window().drawable_size();
+    let monitor_area = AABB::new_wh(0, 0, wwidth as i32, wheight as i32);
 
     // need to gather events once so that canvas.window().drawable_size gives the correct window size.
     events.pump_events();
@@ -530,6 +553,7 @@ fn main() -> Result<(), String> {
         sounds,
         hitmarker,
         pixel_coords,
+        monitor_area,
     };
 
     let mut state = CalibrationState::new();
@@ -545,7 +569,6 @@ fn main() -> Result<(), String> {
         thread::sleep(Duration::from_millis(10));
     }
 
-    // TODO maybe send message to child thread to kill it. but os will kill all threads when main thread exits.
-    // hidraw_thread.join().ok();
-    Ok(())
+    tx.send(()).unwrap();
+    hidraw_thread.join().unwrap()
 }

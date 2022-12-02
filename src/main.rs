@@ -5,7 +5,6 @@ use std::{error, fs::OpenOptions};
 
 /// Read configuration and delegate to virtual mouse function.
 fn main() -> Result<(), Box<dyn error::Error>> {
-    println!("Initialize logger.");
     env_logger::init();
 
     let usage = "usage: sudo ./target/debug/egalax-rs /dev/hidraw0";
