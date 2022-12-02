@@ -13,6 +13,7 @@ use egalax_rs::config::{MonitorConfig, MonitorConfigBuilder, MonitorDesignator};
 use egalax_rs::geo::{Point, AABB};
 use egalax_rs::protocol::{MessageType, Packet, RawPacket, TouchState, RAW_PACKET_LEN};
 
+use egalax_rs::units::udim;
 use sdl2::event::{Event, EventSender};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::image::LoadTexture;
@@ -159,14 +160,16 @@ impl CalibrationState {
                     // let display_index = sdl_state.canvas.window().display_index()?;
                     // let monitor_name = sdl_state.video_subsystem.display_name(display_index)?;
 
-                    // TODO don't just take entries 0 and 3. should we average them with entries 1 & 2?
-                    let calibration_point_ul = touch_coords[0] - calibration_circle_coords[0];
-                    let calibration_point_lr = touch_coords[3] - calibration_circle_coords[3];
+                    // I hope these indices are all correct.
                     let calibration_points = AABB::new(
-                        calibration_point_ul.0.into(),
-                        calibration_point_ul.1.into(),
-                        calibration_point_lr.0.into(),
-                        calibration_point_lr.1.into(),
+                        udim::average(touch_coords[0].x, touch_coords[2].x)
+                            - calibration_circle_coords[0].x,
+                        udim::average(touch_coords[0].y, touch_coords[1].y)
+                            - calibration_circle_coords[0].y,
+                        udim::average(touch_coords[3].x, touch_coords[1].x)
+                            - calibration_circle_coords[3].x,
+                        udim::average(touch_coords[3].y, touch_coords[2].y)
+                            - calibration_circle_coords[3].y,
                     );
                     let saved_config = MonitorConfigBuilder::new(
                         MonitorDesignator::Named(String::from("changeme")),
@@ -174,7 +177,8 @@ impl CalibrationState {
                     );
 
                     // During the calibration we want to translate into window coordinates.
-                    // So we use the calibrated area as the monitor area as out interpolation target.
+                    // So we use the calibration points as our interpolation target. This only works if the touchscreen is the only monitor.
+                    // TODO maybe actually build the monitor and use the driver?
                     let decal_config = MonitorConfig {
                         screen_space: AABB::default(),
                         monitor_area: sdl_state.monitor_area,
@@ -535,7 +539,12 @@ fn main() -> Result<(), String> {
     let mut events = sdl_context.event_pump()?;
 
     let (wwidth, wheight) = canvas.window().drawable_size();
-    let monitor_area = AABB::new_wh(0, 0, wwidth as i32, wheight as i32);
+    let monitor_area = AABB::new_wh(
+        0.into(),
+        0.into(),
+        (wwidth as i32).into(),
+        (wheight as i32).into(),
+    );
 
     // need to gather events once so that canvas.window().drawable_size gives the correct window size.
     events.pump_events();

@@ -107,17 +107,16 @@ impl<T: Dim> From<(UdimRepr, UdimRepr)> for Range<T> {
 }
 
 /// An axis-aligned bounding box consisting of an upper left corner (x1, y1) and lower right corner (x2, y2)
-/// TODO use udim
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct AABB {
-    x1: UdimRepr,
-    y1: UdimRepr,
-    x2: UdimRepr,
-    y2: UdimRepr,
+    x1: dimX,
+    y1: dimY,
+    x2: dimX,
+    y2: dimY,
 }
 
 impl AABB {
-    pub fn new(x1: UdimRepr, y1: UdimRepr, x2: UdimRepr, y2: UdimRepr) -> Self {
+    pub fn new(x1: dimX, y1: dimY, x2: dimX, y2: dimY) -> Self {
         AABB {
             x1: min(x1, x2),
             y1: min(y1, y2),
@@ -126,11 +125,10 @@ impl AABB {
         }
     }
 
-    pub fn new_wh(x: UdimRepr, y: UdimRepr, width: UdimRepr, height: UdimRepr) -> Self {
+    pub fn new_wh(x: dimX, y: dimY, width: dimX, height: dimY) -> Self {
         AABB::new(x, y, x + width, y + height)
     }
 
-    // TODO could use AsRef to be able to call it with a reference
     pub fn union(self, rhs: Self) -> Self {
         AABB {
             x1: min(self.x1, rhs.x1),
@@ -143,15 +141,15 @@ impl AABB {
     /// Grow the AABB so that it also contains point.
     pub fn grow_to_point(self, point: &Point) -> Self {
         AABB {
-            x1: min(self.x1, point.x.value()),
-            y1: min(self.y1, point.y.value()),
-            x2: max(self.x2, point.x.value()),
-            y2: max(self.y2, point.y.value()),
+            x1: min(self.x1, point.x),
+            y1: min(self.y1, point.y),
+            x2: max(self.x2, point.x),
+            y2: max(self.y2, point.y),
         }
     }
 
     /// Shift x1,x2 by x and y1,y2 by y
-    pub fn shift(self, x: UdimRepr, y: UdimRepr) -> Self {
+    pub fn shift(self, x: dimX, y: dimY) -> Self {
         AABB::new(self.x1 + x, self.y1 + y, self.x2 + x, self.y2 + y)
     }
 
@@ -169,11 +167,11 @@ impl AABB {
         }
     }
 
-    pub fn width(&self) -> UdimRepr {
+    pub fn width(&self) -> dimX {
         self.x2 - self.x1
     }
 
-    pub fn height(&self) -> UdimRepr {
+    pub fn height(&self) -> dimY {
         self.y2 - self.y1
     }
 
@@ -201,10 +199,10 @@ impl Add for AABB {
 impl Default for AABB {
     fn default() -> Self {
         Self {
-            x1: 0,
-            y1: 0,
-            x2: 0,
-            y2: 0,
+            x1: 0.into(),
+            y1: 0.into(),
+            x2: 0.into(),
+            y2: 0.into(),
         }
     }
 }
@@ -221,25 +219,23 @@ impl fmt::Display for AABB {
 
 impl From<&xrandr::Monitor> for AABB {
     fn from(m: &xrandr::Monitor) -> Self {
-        AABB::new(m.x, m.y, m.x + m.width_px, m.y + m.height_px)
+        AABB::new(
+            m.x.into(),
+            m.y.into(),
+            (m.x + m.width_px).into(),
+            (m.y + m.height_px).into(),
+        )
     }
 }
 
 impl From<Point> for AABB {
     fn from(p: Point) -> Self {
-        AABB::new(p.x.value(), p.y.value(), p.x.value(), p.y.value())
+        AABB::new(p.x, p.y, p.x, p.y)
     }
 }
 
-// TODO implement deserialize
-// impl<T: Dim> Serialize for Range<T> {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: Serializer,
-//     {
-//         let mut tup = serializer.serialize_tuple(2)?;
-//         tup.serialize_element(&self.min.value())?;
-//         tup.serialize_element(&self.max.value())?;
-//         tup.end()
-//     }
-// }
+impl From<(UdimRepr, UdimRepr, UdimRepr, UdimRepr)> for AABB {
+    fn from((x1, y1, x2, y2): (UdimRepr, UdimRepr, UdimRepr, UdimRepr)) -> Self {
+        AABB::new(x1.into(), y1.into(), x2.into(), y2.into())
+    }
+}

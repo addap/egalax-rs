@@ -117,7 +117,7 @@ impl Default for MonitorConfigBuilder {
     fn default() -> Self {
         Self {
             monitor_designator: MonitorDesignator::Primary,
-            calibration_points: AABB::new(300, 300, 3800, 3800),
+            calibration_points: AABB::from((300, 300, 3800, 3800)),
         }
     }
 }
