@@ -132,6 +132,14 @@ impl CalibrationState {
         }
     }
 
+    fn add_decal(&mut self, decal: Point) {
+        if self.decals.len() == DECALS_NUM {
+            self.decals.pop_front();
+        }
+
+        self.decals.push_back(decal);
+    }
+
     /// Add new coordinates and go to the next stage.
     /// Switches the given calibration stage to Finished if necessary.
     fn advance(
@@ -396,13 +404,16 @@ fn process_sdl_events(
                 decal_config: monitor_cfg,
                 ..
             } => {
-                // TODO noise filtering for decals
                 let decal = get_decal(&monitor_cfg, packet);
 
-                if state.decals.len() == DECALS_NUM {
-                    state.decals.pop_front();
+                // Noise filtering for decals
+                if let Some(&last_decal) = state.decals.back() {
+                    if (last_decal - decal).magnitude() >= 10.0 {
+                        state.add_decal(decal)
+                    }
+                } else {
+                    state.add_decal(decal)
                 }
-                state.decals.push_back(decal);
             }
         };
     } else {

@@ -27,6 +27,10 @@ impl Point {
 
         dx + dy
     }
+
+    pub fn magnitude(&self) -> f64 {
+        self.euc_distance_to(&(0, 0).into())
+    }
 }
 
 impl fmt::Display for Point {
@@ -52,10 +56,13 @@ impl From<(UdimRepr, UdimRepr)> for Point {
 }
 
 impl Sub for Point {
-    type Output = (dimX, dimY);
+    type Output = Point;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        (self.x - rhs.x, self.y - rhs.y)
+        Point {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
     }
 }
 
