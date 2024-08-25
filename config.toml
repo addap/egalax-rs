@@ -1,0 +1,8 @@
+[monitor_designator]
+Named = "HDMI-A-0"
+
+[calibration_points]
+x1 = 300
+y1 = 300
+x2 = 3800
+y2 = 3800

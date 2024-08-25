@@ -1,7 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 
 set -xe
-
 
 sudo -i -u pi bash << EOF
 

@@ -1,17 +1,16 @@
-use std::{error, fs::OpenOptions, io::Write};
+use std::{fs::OpenOptions, io::Write};
 
-use egalax_rs::config::MonitorConfigBuilder;
-use serde_lexpr;
+use egalax_rs::config::ConfigFile;
 
 /// Generate a default config
-fn main() -> Result<(), Box<dyn error::Error>> {
-    let cf = MonitorConfigBuilder::default();
+fn main() -> Result<(), anyhow::Error> {
+    let cf = ConfigFile::default();
     println!("{:#?}", cf);
-    let s = serde_lexpr::to_string(&cf)?;
+    let s = toml::to_string(&cf)?;
     let mut f = OpenOptions::new()
         .write(true)
         .create(true)
-        .open("./config")?;
+        .open("./config.toml")?;
     f.write_all(s.as_bytes())?;
     Ok(())
 }

@@ -1,10 +1,27 @@
 # egalax-rs
 
-An input driver for our old egalax touchscreen. Translates the raw binary output from the screen to control a virtual mouse with uinput.
+An input driver for our old egalax touchscreen. 
+Translates from the touchscreen's USB protocol into commands to control a virtual mouse with uinput.
 
-## Install
+## Build & Install
+
+### Dependencies (openSUSE)
 ```bash
-$ sudo apt install libudev-dev libxrandr-dev libx11-dev libevdev-dev libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
+# Required dependencies for the main application.
+$ sudo zypper install libudev1 libXrandr-devel libX11-devel libevdev-devel
+# The calibration tool is built in sdl2 so to built that you will need the following libraries installed.
+$ sudo zypper install SDL2-devel libSDL2_gfx-devel SDL2_image-devel SDL2_mixer-devel SDL2_ttf-devel
+```
+
+### Dependencies (Ubuntu)
+```bash
+# Required dependencies for the main application.
+$ sudo apt install libudev-dev libxrandr-dev libx11-dev libevdev-dev 
+# The calibration tool is built in sdl2 so to built that you will need the following libraries installed.
+$ sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
+```
+
+
 $ cargo build
 $ cargo install --path .
 ```

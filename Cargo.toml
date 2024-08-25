@@ -13,9 +13,15 @@ xrandr = "0.1.1"
 log = "0.4.14"
 env_logger = "0.9.0"
 serde = { version = "1.0", features = ["derive"] }
-serde-lexpr = "0.1.0"
-sdl2 = { version = "0.35", default-features = false, features = ["gfx", "ttf", "mixer", "image"] }
+#sdl2 = { version = "0.35", default-features = false, features = ["gfx", "ttf", "mixer", "image"] }
+thiserror = "1.0.63"
+toml = "0.8.19"
+anyhow = "1.0.86"
 
 [features]
-default = ["audio"]
+default = []
 audio = []
+
+[[bin]]
+name = "calibrate"
+path = "src/calibration/calibrate.rs"

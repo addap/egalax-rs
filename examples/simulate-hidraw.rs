@@ -1,4 +1,4 @@
-use egalax_rs::{config::MonitorConfigBuilder, driver::virtual_mouse};
+use egalax_rs::{config::ConfigFile, driver::virtual_mouse};
 use nix::{sys::stat, unistd::mkfifo};
 use std::{
     error,
@@ -10,6 +10,8 @@ use std::{
     time::Duration,
 };
 use tempdir::TempDir;
+
+const HIDRAW_FILE: &str = "./dumps/hidraw.bin";
 
 fn virtual_sender(data: Vec<u8>, path: PathBuf) {
     // let mut writer = OpenOptions::new().write(true).open(&path).unwrap();
@@ -36,7 +38,7 @@ fn virtual_sender(data: Vec<u8>, path: PathBuf) {
 }
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    let hidraw = fs::read("./hidraw.bin").expect("Cannot read hidraw file");
+    let hidraw = fs::read(HIDRAW_FILE).expect("Cannot read hidraw file");
 
     let tmp_dir = TempDir::new("hidraw").unwrap();
     let path = tmp_dir.path().join("egalax.fifo");
@@ -52,10 +54,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     // we cannot open both reader and writer in the same thread, if writer is blocking we have a deadlock, if write is nonblocking, opening returns an error
 
     thread::spawn(move || virtual_sender(hidraw, path1));
-    let reader = OpenOptions::new().read(true).open(&path).unwrap();
-    let monitor_cfg = MonitorConfigBuilder::default().build()?;
+    let mut reader = OpenOptions::new().read(true).open(&path).unwrap();
+    let monitor_cfg = ConfigFile::default().build()?;
     println!("setup complete");
 
-    virtual_mouse(reader, monitor_cfg)?;
+    virtual_mouse(&mut reader, monitor_cfg)?;
     Ok(())
 }

@@ -1,5 +1,3 @@
-#[cfg(feature = "audio")]
-pub mod audio;
 pub mod config;
 pub mod driver;
 pub mod error;
