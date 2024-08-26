@@ -94,8 +94,8 @@ impl USBPacket {
         };
 
         // X and Y coordinates are stored little-endian.
-        let y: UdimRepr = ((packet.0[3] as UdimRepr) << 8) | (packet.0[2] as UdimRepr);
-        let x: UdimRepr = ((packet.0[5] as UdimRepr) << 8) | (packet.0[4] as UdimRepr);
+        let y = ((packet.0[3] as u16) << 8) | (packet.0[2] as u16);
+        let x = ((packet.0[5] as u16) << 8) | (packet.0[4] as u16);
 
         if y >> resolution != 0x00 {
             return Err(ParsePacketError::WrongResolution(DimE::Y));
@@ -105,7 +105,10 @@ impl USBPacket {
 
         let packet = USBPacket {
             touch_state,
-            position: (x, y).into(),
+            position: Point2D {
+                x: x.into(),
+                y: y.into(),
+            },
             resolution,
         };
 
@@ -164,7 +167,7 @@ mod tests {
         assert_eq!(
             Ok(USBPacket {
                 touch_state: TouchState::IsTouching,
-                position: (306, 315).into(),
+                position: (306.0, 315.0).into(),
                 resolution: 12
             }),
             USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))
@@ -178,7 +181,7 @@ mod tests {
         assert_eq!(
             Ok(USBPacket {
                 touch_state: TouchState::IsTouching,
-                position: (313, 309).into(),
+                position: (313.0, 309.0).into(),
                 resolution: 12
             }),
             USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))

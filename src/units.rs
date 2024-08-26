@@ -11,10 +11,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     marker::PhantomData,
-    ops::{Add, Sub},
+    ops::{Add, Div, Mul, Sub},
 };
-
-use crate::geo::Range;
 
 /// X dimension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -26,18 +24,18 @@ pub struct Y;
 
 /// Marker trait that represents a dimension.
 /// Effectively, this declares a new kind with two type constructors.
-pub trait Dim: Eq + Ord {}
+pub trait Dim: Clone + Copy + Eq + Ord {}
 impl Dim for X {}
 impl Dim for Y {}
 
 /// Integer type of a screen dimension
-pub type UdimRepr = i32;
+pub type UdimRepr = f32;
 
 /// Wrapper which uses PhantomData to statically tell apart numbers of different dimensions.
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
-#[derive(Debug, PartialEq, Eq, PartialOrd, Clone, Copy)]
-pub struct udim<T: Dim>(PhantomData<T>, UdimRepr);
+#[derive(Debug, Clone, Copy, PartialOrd)]
+pub struct udim<D: Dim>(PhantomData<D>, UdimRepr);
 
 /// Number in X dimension.
 #[allow(non_camel_case_types)]
@@ -47,65 +45,89 @@ pub type dimX = udim<X>;
 #[allow(non_camel_case_types)]
 pub type dimY = udim<Y>;
 
-impl<T: Dim> udim<T> {
+impl<D: Dim> udim<D> {
     /// The underlying dimensionless value.
-    pub fn value(&self) -> UdimRepr {
+    pub fn value(self) -> UdimRepr {
         self.1
     }
 
-    /// Takes the arithmetic average of two dimensioned numbers.
-    pub fn average(x: Self, y: Self) -> Self {
-        Range::from((x, y)).midpoint()
+    /// The underlying dimensionless value as an integer.
+    pub fn int(self) -> i32 {
+        self.value() as i32
     }
 }
 
-impl<T: Dim> fmt::Display for udim<T> {
+impl<D: Dim> fmt::Display for udim<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.1.fmt(f)
     }
 }
 
-impl<T: Dim> From<u16> for udim<T> {
-    fn from(c: u16) -> Self {
-        udim(PhantomData, c as UdimRepr)
+impl<D: Dim> From<u16> for udim<D> {
+    fn from(x: u16) -> Self {
+        (x as UdimRepr).into()
     }
 }
 
-impl<T: Dim> From<i32> for udim<T> {
-    fn from(c: i32) -> Self {
-        udim(PhantomData, c as UdimRepr)
+impl<D: Dim> From<i32> for udim<D> {
+    fn from(x: i32) -> Self {
+        (x as UdimRepr).into()
     }
 }
 
-impl<T: Dim> From<udim<T>> for UdimRepr {
-    fn from(d: udim<T>) -> Self {
-        d.1
+impl<D: Dim> From<f32> for udim<D> {
+    fn from(x: f32) -> Self {
+        udim(PhantomData, x)
     }
 }
 
-impl<T: Dim> Add for udim<T> {
-    type Output = udim<T>;
+impl<D: Dim> Add for udim<D> {
+    type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
         (self.1 + rhs.1).into()
     }
 }
 
-impl<T: Dim> Sub for udim<T> {
-    type Output = udim<T>;
+impl<D: Dim> Sub for udim<D> {
+    type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
         (self.1 - rhs.1).into()
     }
 }
 
-impl<T: Dim + PartialOrd + Eq> Ord for udim<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.1.cmp(&other.1)
+impl<D: Dim> Mul<udim<D>> for udim<D> {
+    type Output = udim<D>;
+
+    fn mul(self, rhs: udim<D>) -> Self::Output {
+        (self.1 * rhs.1).into()
     }
 }
 
-impl<T: Dim> Serialize for udim<T> {
+impl<D: Dim> Div<udim<D>> for udim<D> {
+    type Output = udim<D>;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        (self.1 / rhs.1).into()
+    }
+}
+
+impl<D: Dim> PartialEq for udim<D> {
+    fn eq(&self, other: &Self) -> bool {
+        self.1.total_cmp(&other.1).is_eq()
+    }
+}
+
+impl<D: Dim> Eq for udim<D> {}
+
+impl<D: Dim> Ord for udim<D> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.1.total_cmp(&other.1)
+    }
+}
+
+impl<D: Dim> Serialize for udim<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -114,10 +136,10 @@ impl<T: Dim> Serialize for udim<T> {
     }
 }
 
-impl<'de, T: Dim> Deserialize<'de> for udim<T> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+impl<'de, D: Dim> Deserialize<'de> for udim<D> {
+    fn deserialize<De>(deserializer: De) -> Result<Self, De::Error>
     where
-        D: serde::Deserializer<'de>,
+        De: serde::Deserializer<'de>,
     {
         let x: UdimRepr = UdimRepr::deserialize(deserializer)?;
         Ok(x.into())

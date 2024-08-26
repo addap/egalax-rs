@@ -25,15 +25,15 @@ pub struct Vec2D {
 
 impl Point2D {
     /// Computes the Euclidean distance between two points.
-    pub fn euclidean_distance_to(&self, other: &Self) -> f64 {
+    pub fn euclidean_distance_to(&self, other: &Self) -> f32 {
         let dx = (other.x - self.x).value().abs();
         let dy = (other.y - self.y).value().abs();
 
-        ((dx.pow(2) + dy.pow(2)) as f64).sqrt()
+        (dx.powi(2) + dy.powi(2)).sqrt()
     }
 
     /// Computes the Manhattan distance between two points.
-    pub fn manhattan_distance_to(&self, other: &Self) -> i32 {
+    pub fn manhattan_distance_to(&self, other: &Self) -> f32 {
         let dx = (other.x - self.x).value().abs();
         let dy = (other.y - self.y).value().abs();
 
@@ -59,8 +59,8 @@ impl Vec2D {
     }
 
     /// Computes the magnitude of Vector.
-    pub fn magnitude(&self) -> f64 {
-        ((self.x.value().pow(2) + self.y.value().pow(2)) as f64).sqrt()
+    pub fn magnitude(&self) -> f32 {
+        (self.x.value().powi(2) + self.y.value().powi(2)).sqrt()
     }
 }
 
@@ -114,52 +114,50 @@ impl Sub for Point2D {
 
 /// A range of values between a minimum and maximum.
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Range<T: Dim> {
-    pub min: udim<T>,
-    pub max: udim<T>,
+pub struct Range<D: Dim> {
+    pub min: udim<D>,
+    pub max: udim<D>,
 }
 
-impl<T: Dim> Range<T> {
+impl<D: Dim> Range<D> {
     /// Computes the linear factor of a value inside a range.
-    pub fn linear_factor(&self, x: udim<T>) -> f64 {
+    pub fn linear_factor(&self, x: udim<D>) -> udim<D> {
         // solve for t
         // x = t * min + (1 - t) * max
         // => t = (max - x)/(max - min)
         if self.max == self.min {
-            f64::NAN
+            f32::NAN.into()
         } else {
-            let t = ((self.max.value() - x.value()) as f64)
-                / ((self.max.value() - self.min.value()) as f64);
+            let t = (self.max - x) / (self.max - self.min);
             t
         }
     }
 
     /// Computes a linear interpolation in a range.
-    pub fn lerp(&self, t: f64) -> udim<T> {
-        let res = (self.min.value() as f64) * t + (self.max.value() as f64) * (1.0 - t);
-        udim::<T>::from(res.round() as UdimRepr)
+    pub fn lerp(&self, t: udim<D>) -> udim<D> {
+        self.min * t + self.max * (udim::from(1.0) - t)
     }
 
     /// Computes the midpoint of a range.
-    pub fn midpoint(&self) -> udim<T> {
-        self.lerp(0.5)
+    pub fn midpoint(&self) -> udim<D> {
+        self.lerp(0.5.into())
     }
 }
 
-impl<T: Dim> fmt::Display for Range<T> {
+impl<D: Dim> fmt::Display for Range<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = format!("({}, {})", self.min, self.max);
         f.write_str(&description)
     }
 }
 
-impl<T: Dim> From<(udim<T>, udim<T>)> for Range<T> {
-    fn from((min, max): (udim<T>, udim<T>)) -> Self {
+impl<D: Dim> From<(udim<D>, udim<D>)> for Range<D> {
+    fn from((min, max): (udim<D>, udim<D>)) -> Self {
         Range { min, max }
     }
 }
 
-impl<T: Dim> From<(UdimRepr, UdimRepr)> for Range<T> {
+impl<D: Dim> From<(UdimRepr, UdimRepr)> for Range<D> {
     fn from((min, max): (UdimRepr, UdimRepr)) -> Self {
         Range {
             min: min.into(),

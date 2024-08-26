@@ -90,12 +90,12 @@ impl EventGen {
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_X),
-            x_monitor.value(),
+            x_monitor.int(),
         ));
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_Y),
-            y_monitor.value(),
+            y_monitor.int(),
         ));
     }
 
@@ -225,8 +225,8 @@ impl Driver {
         // that are restricted to the screen space of the designated monitor.
         let abs_info_x: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.config.screen_space.x().min.value(),
-            maximum: self.config.screen_space.x().max.value(),
+            minimum: self.config.screen_space.x().min.int(),
+            maximum: self.config.screen_space.x().max.int(),
             // TODO test if fuzz value works as expected. should remove spurious drags when pressing long for right-click
             fuzz: 50,
             flat: 0,
@@ -235,8 +235,8 @@ impl Driver {
 
         let abs_info_y: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.config.screen_space.y().min.value(),
-            maximum: self.config.screen_space.y().max.value(),
+            minimum: self.config.screen_space.y().min.int(),
+            maximum: self.config.screen_space.y().max.int(),
             fuzz: 50,
             flat: 0,
             resolution: 0,
