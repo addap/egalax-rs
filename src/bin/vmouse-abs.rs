@@ -1,5 +1,7 @@
 use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_SYN};
-use evdev_rs::{AbsInfo, DeviceWrapper, InputEvent, TimeVal, UInputDevice, UninitDevice};
+use evdev_rs::{
+    AbsInfo, DeviceWrapper, EnableCodeData, InputEvent, TimeVal, UInputDevice, UninitDevice,
+};
 use std::thread;
 use std::time::Duration;
 
@@ -37,8 +39,14 @@ fn mkdev() -> Result<UInputDevice, std::io::Error> {
     };
 
     u.enable_event_type(&EventType::EV_ABS)?;
-    u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_X), Some(&abs_info_x))?;
-    u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_Y), Some(&abs_info_y))?;
+    u.enable_event_code(
+        &EventCode::EV_ABS(EV_ABS::ABS_X),
+        Some(EnableCodeData::AbsInfo(abs_info_x)),
+    )?;
+    u.enable_event_code(
+        &EventCode::EV_ABS(EV_ABS::ABS_Y),
+        Some(EnableCodeData::AbsInfo(abs_info_y)),
+    )?;
 
     u.enable_event_code(&EventCode::EV_SYN(EV_SYN::SYN_REPORT), None)?;
 

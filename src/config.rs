@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use evdev_rs::enums::EV_KEY;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::Path;
@@ -21,50 +22,84 @@ use crate::{error::EgalaxError, geo::AABB};
 /// +-----+ +----+      +-----+----+
 ///    |      |
 ///   _+_    _+_
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Config {
     /// Total virtual screen space in pixels. the union of all screen spaces of connected displays.
     pub screen_space: AABB,
     /// Screen space of the target monitor in absolute pixels.
     pub monitor_area: AABB,
-    /// The coordinates of the calibration points in the coordinate system of the touch screen (appears to be physically in units of 0.1mm).
-    pub calibration_points: AABB,
-    /// How long you have to keep pressing to trigger a right-click.
-    pub right_click_wait: Duration,
-    /// Threshold to filter noise of consecutive touch events happening close to each other.
-    pub has_moved_threshold: f64,
+    /// Common config options.
+    common: ConfigCommon,
+}
+
+impl Config {
+    pub fn calibration_points(&self) -> AABB {
+        self.common.calibration_points
+    }
+
+    pub fn right_click_wait(&self) -> Duration {
+        self.common.right_click_wait
+    }
+
+    pub fn has_moved_threshold(&self) -> f32 {
+        self.common.has_moved_threshold
+    }
+
+    pub fn ev_left_click(&self) -> EV_KEY {
+        self.common.ev_left_click
+    }
+
+    pub fn ev_right_click(&self) -> EV_KEY {
+        self.common.ev_right_click
+    }
 }
 
 impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = format!(
-            "Total virtual screen space: {}.
+        f.write_fmt(format_args!(
+            "Total virtual screen space: {}.\n\
             Monitor area within screen space: {}.
-            Calibration points of touchscreen: {}.
-            Right-click wait duration: {}ms.
-            Has-moved threshold: {}.",
-            self.screen_space,
-            self.monitor_area,
-            self.calibration_points,
-            self.right_click_wait.as_millis(),
-            self.has_moved_threshold
-        );
-
-        f.write_str(&description)
+            {}",
+            self.screen_space, self.monitor_area, self.common
+        ))
     }
 }
 
-/// Representation of config file which can be used to build a [MonitorConfig]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ConfigFile {
-    /// Name of the xrandr output of the monitor on which touch events will be interpreted.
-    monitor_designator: MonitorDesignator,
+/// Common config options that are taken verbatim from the config file.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct ConfigCommon {
     /// The coordinates of the calibration points in the coordinate system of the touch screen (appears to be physically in units of 0.1mm).
     calibration_points: AABB,
     /// How long you have to keep pressing to trigger a right-click.
     right_click_wait: Duration,
     /// Threshold to filter noise of consecutive touch events happening close to each other.
-    has_moved_threshold: f64,
+    has_moved_threshold: f32,
+    /// Key code for left-click.
+    ev_left_click: EV_KEY,
+    /// Key code for right-click.
+    ev_right_click: EV_KEY,
+}
+
+impl fmt::Display for ConfigCommon {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!(
+            "Calibration points of touchscreen: {}.\n\
+            Right-click wait duration: {}ms.\n\
+            Has-moved threshold: {}mm.",
+            self.calibration_points,
+            self.right_click_wait.as_millis(),
+            self.has_moved_threshold * 0.1,
+        ))
+    }
+}
+
+/// Representation of config file which can be used to build a [MonitorConfig]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigFile {
+    /// Name of the xrandr output of the monitor on which touch events will be interpreted.
+    monitor_designator: MonitorDesignator,
+    /// Common config options.
+    common: ConfigCommon,
 }
 
 impl ConfigFile {
@@ -96,9 +131,7 @@ impl ConfigFile {
         let config = Config {
             screen_space: screen_space,
             monitor_area: monitor_area,
-            calibration_points: self.calibration_points,
-            right_click_wait: self.right_click_wait,
-            has_moved_threshold: self.has_moved_threshold,
+            common: self.common,
         };
         log::trace!("Leaving MonitorConfigBuilder::build");
         Ok(config)
@@ -134,9 +167,13 @@ impl Default for ConfigFile {
     fn default() -> Self {
         Self {
             monitor_designator: MonitorDesignator::Named("HDMI-A-0".to_string()),
-            calibration_points: AABB::from((300, 300, 3800, 3800)),
-            right_click_wait: Duration::from_millis(1500),
-            has_moved_threshold: 30.0,
+            common: ConfigCommon {
+                calibration_points: AABB::from((300.0, 300.0, 3800.0, 3800.0)),
+                right_click_wait: Duration::from_millis(1500),
+                has_moved_threshold: 30.0,
+                ev_left_click: EV_KEY::BTN_LEFT,
+                ev_right_click: EV_KEY::BTN_RIGHT,
+            },
         }
     }
 }
@@ -144,8 +181,8 @@ impl Default for ConfigFile {
 impl fmt::Display for ConfigFile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = format!(
-            "Name of XRandR Output: {}.\nCalibration points of touchscreen: {}",
-            self.monitor_designator, self.calibration_points
+            "Name of XRandR Output: {}.\n{}",
+            self.monitor_designator, self.common
         );
 
         f.write_str(&description)

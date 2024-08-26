@@ -6,22 +6,27 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-evdev-rs = "0.5"
-nix = "0.23"
-tempdir = "0.3.7"
+evdev-rs = { version = "0.6", features = [ "serde" ] }
 xrandr = "0.1.1"
-log = "0.4.14"
 env_logger = "0.9.0"
-serde = { version = "1.0", features = ["derive"] }
-#sdl2 = { version = "0.35", default-features = false, features = ["gfx", "ttf", "mixer", "image"] }
-thiserror = "1.0.63"
+log = "0.4.14"
+serde = { version = "1.0", features = [ "derive" ] }
 toml = "0.8.19"
+thiserror = "1.0.63"
 anyhow = "1.0.86"
+nix = { version = "0.23", optional = true }
+tempdir = { version = "0.3.7", optional = true }
+#sdl2 = { version = "0.35", default-features = false, features = ["gfx", "ttf", "mixer", "image"] }
 
 [features]
 default = []
 audio = []
+unix = ["nix", "tempdir"]
 
 [[bin]]
 name = "calibrate"
 path = "src/calibration/calibrate.rs"
+
+[[example]]
+name = "simulate-hidraw"
+required-features = ["unix"]

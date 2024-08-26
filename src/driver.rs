@@ -1,5 +1,7 @@
 use evdev_rs::enums::{BusType, EventCode, EventType, InputProp, EV_ABS, EV_KEY, EV_SYN};
-use evdev_rs::{AbsInfo, DeviceWrapper, InputEvent, TimeVal, UInputDevice, UninitDevice};
+use evdev_rs::{
+    AbsInfo, DeviceWrapper, EnableCodeData, InputEvent, TimeVal, UInputDevice, UninitDevice,
+};
 use std::time::{Duration, Instant, SystemTime};
 use std::{io, thread};
 
@@ -7,13 +9,6 @@ use crate::config::Config;
 use crate::error::EgalaxError;
 use crate::geo::Point2D;
 use crate::protocol::{PacketTag, RawPacket, TouchState, USBMessage, USBPacket, RAW_PACKET_LEN};
-use crate::units::*;
-
-// TODO test values for has_moved threshold
-/// Evdev key for left-click.
-const BTN_LEFT: EV_KEY = EV_KEY::BTN_LEFT;
-/// Evdev key for right-click.
-const BTN_RIGHT: EV_KEY = EV_KEY::BTN_RIGHT;
 
 /// Touchstate of the driver that also keeps track of when & where the touch started.
 #[derive(Debug, Clone, Copy)]
@@ -78,10 +73,16 @@ impl EventGen {
     }
 
     fn add_move_position(&mut self, position: Point2D, monitor_cfg: &Config) {
-        let x_scale = monitor_cfg.calibration_points.x().linear_factor(position.x);
+        let x_scale = monitor_cfg
+            .calibration_points()
+            .x()
+            .linear_factor(position.x);
         let x_monitor = monitor_cfg.monitor_area.x().lerp(x_scale);
 
-        let y_scale = monitor_cfg.calibration_points.y().linear_factor(position.y);
+        let y_scale = monitor_cfg
+            .calibration_points()
+            .y()
+            .linear_factor(position.y);
         let y_monitor = monitor_cfg.monitor_area.y().lerp(y_scale);
 
         log::info!("Moving to x {}", x_monitor.value());
@@ -147,11 +148,11 @@ impl Driver {
                 // User stopped touching so we release any buttons and reset the state.
                 // TODO explain why we release both left and right click. Another approach would be to wait until this point to issue both a left click and release.
                 log::info!("Releasing left-click.");
-                events.add_btn_release(BTN_LEFT);
+                events.add_btn_release(self.config.ev_left_click());
 
                 if self.state.is_right_click {
                     log::info!("Releasing right-click.");
-                    events.add_btn_release(BTN_RIGHT);
+                    events.add_btn_release(self.config.ev_right_click());
                 }
 
                 self.state = DriverState::default();
@@ -163,7 +164,7 @@ impl Driver {
                     touch_start_time: Instant::now(),
                     touch_origin: packet.position(),
                 };
-                events.add_btn_press(BTN_LEFT);
+                events.add_btn_press(self.config.ev_left_click());
             }
             (
                 DriverTouchState::IsTouching {
@@ -178,16 +179,16 @@ impl Driver {
                 if !self.state.is_right_click && !self.state.has_moved {
                     let touch_distance = touch_origin.euclidean_distance_to(&packet.position());
 
-                    if touch_distance > self.config.has_moved_threshold {
+                    if touch_distance > self.config.has_moved_threshold() {
                         log::info!("Finger has moved while touching. Disabling right-click.");
                         self.state.has_moved = true;
                     } else {
                         let time_touching = Instant::now().duration_since(touch_start_time);
 
-                        if time_touching > self.config.right_click_wait {
+                        if time_touching > self.config.right_click_wait() {
                             log::info!("Starting right-click.");
                             self.state.is_right_click = true;
-                            events.add_btn_press(BTN_RIGHT);
+                            events.add_btn_press(self.config.ev_right_click());
                         }
                     }
                 }
@@ -217,8 +218,8 @@ impl Driver {
 
         log::info!("Set events that will be generated for virtual device.");
         u.enable_event_type(&EventType::EV_KEY)?;
-        u.enable_event_code(&EventCode::EV_KEY(BTN_LEFT), None)?;
-        u.enable_event_code(&EventCode::EV_KEY(BTN_RIGHT), None)?;
+        u.enable_event_code(&EventCode::EV_KEY(self.config.ev_left_click()), None)?;
+        u.enable_event_code(&EventCode::EV_KEY(self.config.ev_right_click()), None)?;
 
         // For the minimum and maximum values we must specify the whole virtual screen space
         // to establish a frame of reference. Later, we will always send cursor movements
@@ -243,8 +244,14 @@ impl Driver {
         };
 
         u.enable_event_type(&EventType::EV_ABS)?;
-        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_X), Some(&abs_info_x))?;
-        u.enable_event_code(&EventCode::EV_ABS(EV_ABS::ABS_Y), Some(&abs_info_y))?;
+        u.enable_event_code(
+            &EventCode::EV_ABS(EV_ABS::ABS_X),
+            Some(EnableCodeData::AbsInfo(abs_info_x)),
+        )?;
+        u.enable_event_code(
+            &EventCode::EV_ABS(EV_ABS::ABS_Y),
+            Some(EnableCodeData::AbsInfo(abs_info_y)),
+        )?;
 
         // TODO do we need MSC_SCAN which is present in recording.txt?
         u.enable_event_code(&EventCode::EV_SYN(EV_SYN::SYN_REPORT), None)?;

@@ -156,10 +156,6 @@ impl fmt::Display for USBMessage {
 mod tests {
     use super::*;
 
-    fn zero() -> TimeVal {
-        TimeVal::new(0, 0)
-    }
-
     #[test]
     fn test_parse_touch_upper_left() {
         let raw_packet: RawPacket = RawPacket([0x02, 0x03, 0x3b, 0x01, 0x32, 0x01]);
