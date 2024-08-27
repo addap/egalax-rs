@@ -62,6 +62,12 @@ impl EventGen {
         }
     }
 
+    fn add_btn_click(&mut self, btn: EV_KEY) {
+        self.add_btn_press(btn);
+        self.add_syn();
+        self.add_btn_release(btn);
+    }
+
     fn add_btn_press(&mut self, btn: EV_KEY) {
         self.events
             .push(InputEvent::new(&self.time, &EventCode::EV_KEY(btn), 1));
@@ -145,26 +151,22 @@ impl Driver {
                 // No touch previously and now.
             }
             (DriverTouchState::IsTouching { .. }, TouchState::NotTouching) => {
-                // User stopped touching so we release any buttons and reset the state.
-                // TODO explain why we release both left and right click. Another approach would be to wait until this point to issue both a left click and release.
-                log::info!("Releasing left-click.");
-                events.add_btn_release(self.config.ev_left_click());
+                // User stopped touching.
 
-                if self.state.is_right_click {
-                    log::info!("Releasing right-click.");
-                    events.add_btn_release(self.config.ev_right_click());
+                if !self.state.is_right_click {
+                    log::info!("Releasing left-click.");
+                    events.add_btn_click(self.config.ev_left_click());
                 }
 
                 self.state = DriverState::default();
             }
             (DriverTouchState::NotTouching, TouchState::IsTouching) => {
-                // User started touching so we start with a left-click.
-                log::info!("Starting left-click.");
+                // User started touching.
+                log::info!("left-click");
                 self.state.touch_state = DriverTouchState::IsTouching {
                     touch_start_time: Instant::now(),
                     touch_origin: packet.position(),
                 };
-                events.add_btn_press(self.config.ev_left_click());
             }
             (
                 DriverTouchState::IsTouching {
@@ -186,9 +188,9 @@ impl Driver {
                         let time_touching = Instant::now().duration_since(touch_start_time);
 
                         if time_touching > self.config.right_click_wait() {
-                            log::info!("Starting right-click.");
+                            log::info!("right-click");
                             self.state.is_right_click = true;
-                            events.add_btn_press(self.config.ev_right_click());
+                            events.add_btn_click(self.config.ev_right_click());
                         }
                     }
                 }
