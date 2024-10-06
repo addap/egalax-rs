@@ -3,7 +3,7 @@ use egalax_rs::driver::virtual_mouse;
 use std::result::Result;
 use std::{error, fs::OpenOptions};
 
-const USAGE: &str = "Usage: egalax-rs /dev/hidraw0";
+const USAGE: &str = "Usage: egalax-rs /dev/hidraw.egalax";
 
 /// Read configuration and delegate to virtual mouse function.
 fn main() -> Result<(), Box<dyn error::Error>> {

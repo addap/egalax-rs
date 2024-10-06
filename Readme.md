@@ -1,60 +1,328 @@
 # egalax-rs
 
-An input driver for our old egalax touchscreen. 
+An input driver for our iiyama ProLite T1930S monitor with integrated touchscreen. 
 Translates from the touchscreen's USB protocol into commands to control a virtual mouse with uinput.
 
 ## Build & Install
 
-### Dependencies (openSUSE)
+### Dependencies
+- xrandr: get screen size information.
+- X11: dependency of xrandr
+- evdev: interact with uinput.
+
+#### openSUSE
 ```bash
-# Required dependencies for the main application.
-$ sudo zypper install libudev1 libXrandr-devel libX11-devel libevdev-devel
-# The calibration tool is built in sdl2 so to built that you will need the following libraries installed.
-$ sudo zypper install SDL2-devel libSDL2_gfx-devel SDL2_image-devel SDL2_mixer-devel SDL2_ttf-devel
+$ sudo zypper install libXrandr-devel libX11-devel libevdev-devel
 ```
 
-### Dependencies (Ubuntu)
+#### Ubuntu
 ```bash
-# Required dependencies for the main application.
 $ sudo apt install libudev-dev libxrandr-dev libx11-dev libevdev-dev 
-# The calibration tool is built in sdl2 so to built that you will need the following libraries installed.
-$ sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
 ```
 
-
+Then to build and install the program.
+```
 $ cargo build
 $ cargo install --path .
 ```
+
 Put the udev `.rules` files in `/etc/udev/rules.d` and the `egalax.service` unit file in `/etc/systemd/system/`.
 
 ## File Structure
 
-- c_src/ - C files to test some libc/kernel APIs.
-- dis/ - Ghidra project to disassemble the manufacturer's eGTouchD driver.
-- dumps/ - Various log outputs which are discussed below.
-- Guide/ - Resources from the manufacturer. PDFs which describe the the monitor and a raw binary protocol of the touchscreen. 
-           Though, out monitor actually uses a different protocol as discussed below.
-- linux_config/ - Config files to automatically start the driver when the USB cable is plugged in.
-- media/ - Resources for the calibration tool.
+- `c_src/` - C files to test some libc/kernel APIs.
+- `dis/` - Ghidra project to disassemble the manufacturer's eGTouchD driver.
+- `logs/` - Various log outputs which are discussed below.
+- `Guide/` - Resources from the manufacturer. PDFs which describe the the monitor and a raw binary protocol of the touchscreen.  
+           Though, our monitor actually uses a different protocol as discussed below.
+- `linux_config/` - Config files to automatically start the driver when the USB cable is plugged in.
+- `media/` - Resources for the calibration tool.
 
-### Output Dumps
+## Background
+We had an old iiyama ProLite T1930S monitor with an integrated touchscreen lying around which we didn't know how to use. There was probably a driver of the manufacturer that we could install, but wanting to learn more about Linux we decided to write our own userspace driver for it.
+
+A *userspace driver* is a driver that runs as a normal user program, interacting with kernel APIs to implement the driver behavior. We decided on this approach as there is less danger of breaking things and we can use any language that can do system calls. 
+Devices like mice, keyboards and touchscreens are collectively referred to as *human interface devices* (HID) and they are handled by the Linux [input subsystem](https://docs.kernel.org/input/input.html) which contains a generic usbhid driver that applies to many input devices. For userspace drivers the system exposes [uinput](https://docs.kernel.org/input/uinput.html) which allows creating and controlling virtual input devices.
+
+HID devices communicate via *HID reports*, binary messages that describe the state of the device. Their schema is described by *HID report descriptors* and in general the usbhid driver's job is to parse those descriptors and then interpret HID reports into input events.
+Since we want to write our own driver we use the kernel's [hidraw interface](https://docs.kernel.org/hid/hidraw.html) to get access to the original HID reports.
+
+<table>
+<tr>
+    <td><b>Generic USB Mouse</b></td>
+    <td><b>Plan for egalax-rs</b></td>
+</tr>
+<tr>
+    <td>
+
+- [usbhid](https://docs.kernel.org/input/input.html#hid-generic) communicates with device over USB and generates input events.
+- [evdev](https://docs.kernel.org/input/input.html#evdev) is the interface for userspace applications to receive input events. All the event nodes in /dev/input/ belong to it.
+- The xorg drivers `xf86-input-{evdev,libinput}` are wrappers around evdev to relay input events to the X server.
+- finally, the event reaches the X server and then the client application that will react to it.
+    </td>
+<td>
+
+- Instead of relying on usbhid we get the raw HID report data via the [hidraw driver](https://docs.kernel.org/hid/hidraw.html).
+- We interpret the HID report and generate input events that we inject back into the input subsystem using uinput.
+- Then evdev will present these events to userspace drivers as before.
+</td>
+</tr>
+<tr>
+    <td>
+
+```
+X server & client
+    ^
+    |
+xf86-input-{evdev,libinput}
+    ^
+    | via /dev/input/eventX
+    |
+evdev
+    ^
+    |
+kernel (via usbhid)
+    ^
+    |
+physical device 
+```
+
+</td>
+<td>
+
+```
+X server & client
+    ^
+    |
+xf86-input-{evdev,libinput}
+              ^
+              | via /dev/eventX
+              \ 
+egalax-rs ---> evdev (uinput)
+    ^               
+    | via /dev/hidrawX 
+    |
+kernel (via hidraw driver)
+    ^
+    |
+physical device
+```
+</td>
+</tr>
+</table>
+
+### Getting the hidraw device
+The [hidraw](https://docs.kernel.org/hid/hidraw.html) documentation mentions the following.
+```
+Hidraw uses a dynamic major number, meaning that udev should be relied on to create hidraw device nodes.
+```
+
+This affected me as I used to use the first hidraw device `/dev/hidraw0` to read the touchscreen input but currently it is taken up by the buttons on my external USB speakers.
+For development it's easier if we have a static device node. For that we use the folloing udev rules in the file `linux_config/51-hidraw.rules`
+```
+SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input", SYMLINK+="hidraw.egalax"
+```
+When the touchscreen is plugged in this creates the device node `/dev/hidraw.egalax` from which we can read the raw HID reports.
+
+We can get the product and vendor ID by querying the connected USB devices using `lsusb`. This also shows us the USB bus and device ID that we need in the following.
+```
+$ lsusb
+[...]
+Bus 005 Device 027: ID 0eef:0001 D-WAV Scientific Co., Ltd Titan6001 Surface Acoustic Wave Touchscreen Controller [eGalax]
+```
+
+### Binary Protocol of the Touchscreen
+
+There are several ways we can get an idea about the binary protocol that the touchscreen uses.
+
+1. Educated guesses when looking at the HID reports.
+2. Reading the HID report descriptor.
+3. Disassembling the manufacturer's driver.
+
+#### 1. Interpreting HID reports
+We can print the HID reports from our hidraw device node using `xxd`. Since we are looking for patterns we print it in binary.
+First touching and releasing the upper-left corner, and then touching and releasing the lower-right corner of the monitor results in the following output.
+
+```
+$ xxd -b /dev/hidraw.egalax
+00000000: 00000010 00000011 01100010 00000001 11100011 00000001  ..b...
+00000006: 00000010 00000011 01100011 00000001 11100010 00000001  ..c...
+0000000c: 00000010 00000011 01100001 00000001 11100010 00000001  ..a...
+00000012: 00000010 00000011 01100001 00000001 11100000 00000001  ..a...
+00000018: 00000010 00000011 01100001 00000001 11011111 00000001  ..a...
+0000001e: 00000010 00000011 01100000 00000001 11100000 00000001  ..`...
+00000024: 00000010 00000010 01100000 00000001 11100000 00000001  ..`...
+0000002a: 00000010 00000011 01111000 00001101 11101110 00001101  ..x...
+00000030: 00000010 00000011 01110100 00001101 11101100 00001101  ..t...
+00000036: 00000010 00000011 01110010 00001101 11101011 00001101  ..r...
+0000003c: 00000010 00000011 01110010 00001101 11101011 00001101  ..r...
+00000042: 00000010 00000011 01110011 00001101 11101011 00001101  ..s...
+00000048: 00000010 00000011 01110000 00001101 11101010 00001101  ..p...
+0000004e: 00000010 00000011 01101111 00001101 11101010 00001101  ..o...
+00000054: 00000010 00000011 01101111 00001101 11101011 00001101  ..o...
+0000005a: 00000010 00000011 01101110 00001101 11101110 00001101  ..n...
+00000060: 00000010 00000011 01101101 00001101 11101110 00001101  ..m...
+00000066: 00000010 00000010 01101101 00001101 11101110 00001101  ..m...
+```
+
+Each HID report consists of 6 bytes, which we number `m[0]` to `m[5]`.
+We can see the following pattern, where the first two bytes except the touch flag are probably some constant metadata or simply padding.
+
+```
+m[0]        = 0x2 is constant
+m[1][7:1]   = 0b0000001_ is constant
+m[1][0]     = indicates whether we are touching or releasing a finger
+
+m[3] | m[2] = the x position of the touch
+m[5] | m[4] = the y position of the touch
+```
+
+#### 2. Reading the HID report descriptor
+
+Instead of crudely reading the actual HID reports we can also take a look at the HID report descriptors that describe their schema. 
+This can be done using the `usbhid-dump` utitilty. We just need to point it to the correct device using the USB bus and device ID from above.
+
+```
+$ sudo usbhid-dump -a 5:27 -p
+005:032:000:DESCRIPTOR         1727744627.383960
+ 05 01 09 01 A1 01 85 01 09 01 A1 00 05 09 19 01
+ 29 02 15 00 25 01 95 02 75 01 81 02 95 01 75 06
+ 81 01 05 01 09 30 09 31 16 2A 00 26 BD 07 36 00
+ 00 46 FF 0F 66 00 00 75 10 95 02 81 02 C0 C0 05
+ 0D 09 04 A1 01 85 02 09 20 A1 00 09 42 09 32 15
+ 00 25 01 95 02 75 01 81 02 95 06 75 01 81 03 05
+ 01 09 30 75 10 95 01 A4 55 00 65 00 36 00 00 46
+ 00 00 16 1E 00 26 C8 0F 81 02 09 31 16 3C 00 26
+ C3 0F 36 00 00 46 00 00 81 02 B4 C0 C0
+```
+
+This series of hex bytes doesn't really tell us anything though.
+But as explained in the [HID introduction of the Linux kernel documentation](https://docs.kernel.org/hid/hidintro.html) we can paste them (exclude the header) into a [USB descriptor parser](http://eleccelerator.com/usbdescreqparser/), which gives us the following long list describing the HID reports.
+
+```
+0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
+0x09, 0x01,        // Usage (Pointer)
+0xA1, 0x01,        // Collection (Application)
+0x85, 0x01,        //   Report ID (1)
+0x09, 0x01,        //   Usage (Pointer)
+0xA1, 0x00,        //   Collection (Physical)
+0x05, 0x09,        //     Usage Page (Button)
+0x19, 0x01,        //     Usage Minimum (0x01)
+0x29, 0x02,        //     Usage Maximum (0x02)
+0x15, 0x00,        //     Logical Minimum (0)
+0x25, 0x01,        //     Logical Maximum (1)
+0x95, 0x02,        //     Report Count (2)
+0x75, 0x01,        //     Report Size (1)
+0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+0x95, 0x01,        //     Report Count (1)
+0x75, 0x06,        //     Report Size (6)
+0x81, 0x01,        //     Input (Const,Array,Abs,No Wrap,Linear,Preferred State,No Null Position)
+0x05, 0x01,        //     Usage Page (Generic Desktop Ctrls)
+0x09, 0x30,        //     Usage (X)
+0x09, 0x31,        //     Usage (Y)
+0x16, 0x2A, 0x00,  //     Logical Minimum (42)
+0x26, 0xBD, 0x07,  //     Logical Maximum (1981)
+0x36, 0x00, 0x00,  //     Physical Minimum (0)
+0x46, 0xFF, 0x0F,  //     Physical Maximum (4095)
+0x66, 0x00, 0x00,  //     Unit (None)
+0x75, 0x10,        //     Report Size (16)
+0x95, 0x02,        //     Report Count (2)
+0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+0xC0,              //   End Collection
+0xC0,              // End Collection
+0x05, 0x0D,        // Usage Page (Digitizer)
+0x09, 0x04,        // Usage (Touch Screen)
+0xA1, 0x01,        // Collection (Application)
+0x85, 0x02,        //   Report ID (2)
+0x09, 0x20,        //   Usage (Stylus)
+0xA1, 0x00,        //   Collection (Physical)
+0x09, 0x42,        //     Usage (Tip Switch)
+0x09, 0x32,        //     Usage (In Range)
+0x15, 0x00,        //     Logical Minimum (0)
+0x25, 0x01,        //     Logical Maximum (1)
+0x95, 0x02,        //     Report Count (2)
+0x75, 0x01,        //     Report Size (1)
+0x81, 0x02,        //     Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+0x95, 0x06,        //     Report Count (6)
+0x75, 0x01,        //     Report Size (1)
+0x81, 0x03,        //     Input (Const,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+0x05, 0x01,        //     Usage Page (Generic Desktop Ctrls)
+0x09, 0x30,        //     Usage (X)
+0x75, 0x10,        //     Report Size (16)
+0x95, 0x01,        //     Report Count (1)
+0xA4,              //     Push
+0x55, 0x00,        //       Unit Exponent (0)
+0x65, 0x00,        //       Unit (None)
+0x36, 0x00, 0x00,  //       Physical Minimum (0)
+0x46, 0x00, 0x00,  //       Physical Maximum (0)
+0x16, 0x1E, 0x00,  //       Logical Minimum (30)
+0x26, 0xC8, 0x0F,  //       Logical Maximum (4040)
+0x81, 0x02,        //       Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+0x09, 0x31,        //       Usage (Y)
+0x16, 0x3C, 0x00,  //       Logical Minimum (60)
+0x26, 0xC3, 0x0F,  //       Logical Maximum (4035)
+0x36, 0x00, 0x00,  //       Physical Minimum (0)
+0x46, 0x00, 0x00,  //       Physical Maximum (0)
+0x81, 0x02,        //       Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+0xB4,              //     Pop
+0xC0,              //   End Collection
+0xC0,              // End Collection
+```
+
+I'm still not sure what everything here means but apparently there are two kinds of reports, one being a "pointer", the other a "touch screen". 
+
+Both have buttons with binary state (logical minimum = 0 & logical maximum = 1) that are represented by 2 bits (report count = 2 & report size = 1). Then follow 6 constant bits and then X and Y coordinates with 16 bits each (I assume that's what the push & pop instructions mean for the second report).
+
+In total this maps nicely to the values we see from the hidraw interface. The hidraw documentation tells us that "On a device which uses numbered reports, the first byte of the returned data will be the report number; the report data follows, beginning in the second byte."
+
+That means the first byte `m[0]` that was a constant `0x2` in the HID reports above, designates the second type of HID reports for the touch screen interface, the second byte `m[1]` includes the two bits for the buttons plus 6 constant bits and the next 4 bytes are the X and Y value, respectively.
+I'm not sure what the second bit for the buttons means. It might be the "In Range" usage mentioned in the descriptor so maybe it's only 0 if I somehow produce an input that is out of range, which I have not been able to yet.
+
+Unfortunately, the screen reports wrong numbers (e.g. X values are supposed to range from 30 to 4040) while in reality they seem to range from 300 to 3700.
+So manual calibration is unavoidable if we want to avoid magic numbers in our binary.
+
+
+#### 2. Using the manufacturer's driver
+
+While reading the raw HID reports and the HID report descriptors gives us a rough picture of how to parse the data coming in over the hidraw interface, we can get an even better idea straight from the manufacturer by checking what [their driver](https://www.eeti.com/drivers_Linux.html) does.
+We use Ghidra to reverse engineer some functions in their `eGTouchU` driver. It helps that they have extensive debug logs for each function entry and exit.
+
+TODO describe the analysis 
+
+To summarize:
+1. The first HID report byte `0x2` corresponds to the normal kind of message expected 
+from the touch screen.
+2. The first bit of the second byte `m[1][0]` is the status bit for a touch event happening.
+3. The next two bits of the second byte `m[1][1:3]` encode the *resolution* of the touch screen. For our monitor it is a constant `0b01`, which according to the "Software Programming Guide" corresponds to 12 bits of resolution in the X and Y axes.
+I'm not sure why the HID report descriptor instead defines an "In Range" bit and why there is only one bit instead of two. I presume the manufacturer just adapted the descriptor for each monitor to fit the Linux HID requirements.
+4. Bytes 3 to 6 are then the X and Y position (with a resolution of 12 bits) in little-endian byte order.
+
+### Log Dumps
 I recorded some output from connecting the touchscreen & touch interactions.
+In these examples the touchscreen was always assigned the node `/dev/hidraw.egalax` for raw events, and `/dev/input/event19` by evdev.
 
-- The raw output from `/dev/hidraw0` in `hidraw.bin`
+1. #### `hidraw.bin`
+Contains the HID reports that the touchscreen sends over USB when a touch interaction happens.
+Result of touching the 4 corners of the screen.
 
- ```tee hidraw.bin < /dev/hidraw0 | hexdump -C```
- Contains the binary data that the touchscreen sends over USB when a touch interaction happens.
+ ```tee hidraw.bin < /dev/hidraw.egalax | hexdump -C```
 
-- The binary data above visualized in `xxd.log`. Result of touching the 4 corners of the screen.
 
-```xxd -b /dev/hidraw0```
-Already possible to deduce binary format from this. Further discussed below.
+2. #### `xxd.log`.
+The binary data above visualized with xxd. 
+Already possible to deduce binary format from this. 
 
- - The evdev events generated by `usbhid` in `event19.bin`
+```xxd -b hidraw.bin > xxd.log```
+
+
+3. #### `event19.bin`
+The evdev events generated by `usbhid`.
+It turns out the usbhid driver can already handle the touchscreen and generates evdev events for it, but in the default configuration the X server was not picking them up.
 
  ```tee event19.bin < /dev/input/event19 | hexdump -C```
 
- - The evdev events as reported by `evemu-record` in recording.txt
+4. #### `recording.txt`
+The evdev events as reported by `evemu-record`.
 
  ```evemu-record /dev/input/event19```
 
@@ -67,36 +335,9 @@ This shows the evdev events emitted by the input device, which are similar to th
 
  After installing the evdev driver it works, the touchscreen is registered in xinput and moves the cursor. However, it moves the cursor over the whole virtual screen space (all connected outputs combined) and is horribly calibrated, so we don't use it.
 
-- The hid report descriptor in `hid-report-descriptor.txt`. 
-(need https://github.com/DIGImend/hidrd/, and find out bus:device number from `lsusb`)
-
-```$ sudo usbhid-dump -a 3:88 -p | tail -n +2 | xxd -r -p | opt/hidrd/src/hidrd-convert -o spec -```
-
-HID devices use this to document the binary format they use. The relevant part for us seems to be the USAGE(X) and USAGE(Y) in lines 48 and 59, respectively. 
-The minimum and maximum correspond to what the usbhid driver sets as can be gathered from `evemu-record`. 
-Unfortunately, the screen reports wrong numbers (e.g. X values are supposed to range from 30 to 4040) while they actually range from 300 to 3700.
-So manual calibration seems unavoidable if we want to avoid magic numbers in our binary.
-
-
-## Binary Format
-The format described in the "Software Programming Guide" does not exactly match what I'm seeing in the xxd output, but it's similar.
-
-- Sends packets of 6 bytes, e.g. 
-```
-00000000: 00000010 00000011 00110010 00000001 01011001 00000001  ..2.Y.
-
-0: always `0x02`. Analysis of the manufacturer's driver shows that this is the tag for touch event messages. We were not able to prosuce the other (control) messages yet.
-1: metadata
-  - bit 5:6 seem to indicate resolution as described in manual
-    i.e. 0:1 => 12 bits of resolution
-  - bit 7 is 1 iff finger is touching
-2:3: 12 bits of y position
-     the y value is (packet[3][4:] << 8) | packet[2]
-4:5: 12 bits of x position
-```
-
 ## Ways to get information
 - `lsusb` lists all usb devices. Use `-v` (preferably while filtering out one device with `-s`) to get the whole descriptor tree for usb devices.
+
 - /sys
 
 As described [here](http://cholla.mmto.org/computers/usb/OLD/tutorial_usbloger.html) "Sysfs is a virtual filesystem exported by the kernel, similar to /proc. The files in Sysfs contain information about devices and drivers. Some files in Sysfs are even writable, for configuration and control of devices attached to the system. Sysfs is always mounted on /sys."
@@ -428,81 +669,3 @@ When `usbtouchscreen` is not blacklisted and I insert the usb cable, I see the f
 
 The touchscreen works if you just put the supplied xorg conf file in /usr/share/X11/xorg.conf.d and start the daemon with `eGTouchD start`.
 The binary also just reads the raw input and uses uinput to create a virtual mouse.
-
-## Input stack
-1. How one event travels from e.g. a connected mouse to an application
-```
-X client
-    ^
-    |
-X server
-    ^
-    |
-xf86-input-evdev|xf86-input-libinput
-    ^
-    |
- ~/dev/eventX~
-    |
-evdev
-    ^
-    |
-kernel (usbhid module)
-    ^
-    |
-physical device (via interrupt)
-```
-
-2. What we want to achieve 
-```
-X client
-    ^
-    |
-X server
-    ^
-    |
-xf86-input-evdev|xf86-input-libinput
-     \ 
-      \
-rustGalax -------> uinput
-    ^ |              |
-    | |              |
- ~/dev/eventX~ <-----+
-    |/                 
-evdev 
-    ^
-    |
-kernel (usbhid module/custom kernel module that just passes on events to userspace)
-    ^
-    |
-physical device (via interrupt)
-```
-
-
-## TODO
-- [x] use `usb-devices` while monitor is connected to check if it lists `usbhid`. Yes, so it does use the `usbhid` driver.
-```
-T:  Bus=03 Lev=01 Prnt=01 Port=01 Cnt=01 Dev#= 11 Spd=12  MxCh= 0
-D:  Ver= 1.10 Cls=00(>ifc ) Sub=00 Prot=00 MxPS=64 #Cfgs=  1
-P:  Vendor=0eef ProdID=0001 Rev=01.00
-S:  Manufacturer=eGalax Inc.
-S:  Product=USB TouchController
-C:  #Ifs= 1 Cfg#= 1 Atr=a0 MxPwr=100mA
-I:  If#= 0 Alt= 0 #EPs= 1 Cls=03(HID  ) Sub=00 Prot=00 Driver=usbhid
-E:  Ad=81(I) Atr=03(Int.) MxPS=   8 Ivl=3ms
-```
-- [x] use lsof to check which process has the device file open, to check if it's the eGTouchD binary. As explained [here](https://unix.stackexchange.com/a/60080)
-
-For a simple usb mouse it does not show any process that has the file open. 
-- [x] follow [this article](https://who-t.blogspot.com/2016/09/understanding-evdev.html) and use evemu to list event node information for the egalax (For our virtual mouse/my touchpad it should show as in the article)
-  - [ ] for a usb mouse it works as described. However, middle mouse click is not reported as an event in `/dev/input/eventX`, but it is in `/dev/input/mouse2`. Why does this happen?
-  - [ ] for the touchscreen it also worked. But some event nodes associated with the touchscreen are "grabbed" as explained in [current status](#current-status). Need to find out what it means and who is grabbing it, probably xorg. `man evemu-record` tells you to use the `fuse` command but it gives no output for me.
-- [x] use the xorg.conf file from the egalax driver without the eGTouchD binary
-
-Does not work. The eGToucD binar creates a virtual input device with uinput, which the xorg.conf file matches against.
-- [x] Find out the productname that usbhid gives the touchscreen [described here](https://unix.stackexchange.com/questions/58117/determine-xinput-device-manufacturer-and-model) and mofy the xotg.conf to use that. Maybe it already works then.
-
-It does work, if I also install `xf86-input-evdev`. 
-
-- [ ] With the custom xorg.conf, both the "touchcontroller" and the "touchcontroller touchscreen" are registered in xinput. Does it matter? By adding a `Driver "void"` stanza to our xorg.conf we could also ignore the "touchcontroller".
-
-- [ ] try out calibration with [this](https://ubuntuforums.org/archive/index.php/t-1478877.html)

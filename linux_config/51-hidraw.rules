@@ -1,1 +1,1 @@
-KERNEL=="hidraw[0-9]*", SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input"
+SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input", SYMLINK+="hidraw.egalax"
