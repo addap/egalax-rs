@@ -168,7 +168,7 @@ impl Default for ConfigFile {
         Self {
             monitor_designator: MonitorDesignator::Named("HDMI-A-0".to_string()),
             common: ConfigCommon {
-                calibration_points: AABB::from((300.0, 300.0, 3800.0, 3800.0)),
+                calibration_points: AABB::from((300, 300, 3800, 3800)),
                 right_click_wait: Duration::from_millis(1500),
                 has_moved_threshold: 30.0,
                 ev_left_click: EV_KEY::BTN_LEFT,

@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::{max, min},
     fmt,
-    ops::Sub,
 };
 
 use crate::units::*;
@@ -16,20 +15,13 @@ pub struct Point2D {
     pub y: dimY,
 }
 
-/// A vector of two coordinates in X and Y dimensions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Vec2D {
-    pub x: dimX,
-    pub y: dimY,
-}
-
 impl Point2D {
     /// Computes the Euclidean distance between two points.
     pub fn euclidean_distance_to(&self, other: &Self) -> f32 {
-        let dx = (other.x - self.x).value().abs();
-        let dy = (other.y - self.y).value().abs();
+        let dx = (other.x - self.x).value();
+        let dy = (other.y - self.y).value();
 
-        (dx.powi(2) + dy.powi(2)).sqrt()
+        ((dx * dx + dy * dy) as f32).sqrt()
     }
 
     /// Computes the Manhattan distance between two points.
@@ -37,30 +29,12 @@ impl Point2D {
         let dx = (other.x - self.x).value().abs();
         let dy = (other.y - self.y).value().abs();
 
-        dx + dy
-    }
-
-    /// A point's location vector from the origin.
-    pub fn as_vec(&self) -> Vec2D {
-        Vec2D {
-            x: self.x,
-            y: self.y,
-        }
-    }
-}
-
-impl Vec2D {
-    /// A vector's point as a translation from the origin.
-    pub fn as_point(&self) -> Point2D {
-        Point2D {
-            x: self.x,
-            y: self.y,
-        }
+        (dx + dy) as f32
     }
 
     /// Computes the magnitude of Vector.
-    pub fn magnitude(&self) -> f32 {
-        (self.x.value().powi(2) + self.y.value().powi(2)).sqrt()
+    pub fn vec_magnitude(&self) -> f32 {
+        self.euclidean_distance_to(&(0, 0).into())
     }
 }
 
@@ -71,14 +45,9 @@ impl fmt::Display for Point2D {
     }
 }
 
-impl From<(dimX, dimY)> for Point2D {
-    fn from((x, y): (dimX, dimY)) -> Self {
-        Point2D { x, y }
-    }
-}
-
-impl From<(UdimRepr, UdimRepr)> for Point2D {
-    fn from((x, y): (UdimRepr, UdimRepr)) -> Self {
+/// Generic From instance to convert various things into Point2Ds.
+impl<T: Into<dimX> + Into<dimY>> From<(T, T)> for Point2D {
+    fn from((x, y): (T, T)) -> Self {
         Point2D {
             x: x.into(),
             y: y.into(),
@@ -86,61 +55,59 @@ impl From<(UdimRepr, UdimRepr)> for Point2D {
     }
 }
 
-impl From<(dimX, dimY)> for Vec2D {
-    fn from((x, y): (dimX, dimY)) -> Self {
-        Vec2D { x, y }
-    }
-}
-
-impl From<(UdimRepr, UdimRepr)> for Vec2D {
-    fn from((x, y): (UdimRepr, UdimRepr)) -> Self {
-        Vec2D {
-            x: x.into(),
-            y: y.into(),
-        }
-    }
-}
-
-impl Sub for Point2D {
-    type Output = Vec2D;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Vec2D {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-}
-
 /// A range of values between a minimum and maximum.
+/// The fields are private to uphold the invariant that min <= max.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Range<D: Dim> {
-    pub min: udim<D>,
-    pub max: udim<D>,
+    min: udim<D>,
+    max: udim<D>,
 }
 
 impl<D: Dim> Range<D> {
+    /// Creates a new Range between x1 and x2.
+    pub fn new(x1: udim<D>, x2: udim<D>) -> Self {
+        Self {
+            min: min(x1, x2),
+            max: max(x1, x2),
+        }
+    }
+
+    /// Returns the minimum value of the Range.
+    pub fn min(&self) -> udim<D> {
+        self.min
+    }
+
+    /// Returns the maximum value of the Range.
+    pub fn max(&self) -> udim<D> {
+        self.max
+    }
+
+    /// Returns the length of a Range.
+    pub fn length(&self) -> udim<D> {
+        self.max - self.min
+    }
+
     /// Computes the linear factor of a value inside a range.
-    pub fn linear_factor(&self, x: udim<D>) -> udim<D> {
-        // solve for t
+    pub fn linear_factor(&self, x: udim<D>) -> f32 {
         // x = t * min + (1 - t) * max
+        // solve for t
         // => t = (max - x)/(max - min)
         if self.max == self.min {
-            f32::NAN.into()
+            0.0
         } else {
-            let t = (self.max - x) / (self.max - self.min);
+            let t = (self.max - x).float() / (self.max - self.min).float();
             t
         }
     }
 
     /// Computes a linear interpolation in a range.
-    pub fn lerp(&self, t: udim<D>) -> udim<D> {
-        self.min * t + self.max * (udim::from(1.0) - t)
+    pub fn lerp(&self, t: f32) -> udim<D> {
+        self.min * t + self.max * (1.0 - t)
     }
 
     /// Computes the midpoint of a range.
     pub fn midpoint(&self) -> udim<D> {
-        self.lerp(0.5.into())
+        self.lerp(0.5)
     }
 }
 
@@ -151,14 +118,9 @@ impl<D: Dim> fmt::Display for Range<D> {
     }
 }
 
-impl<D: Dim> From<(udim<D>, udim<D>)> for Range<D> {
-    fn from((min, max): (udim<D>, udim<D>)) -> Self {
-        Range { min, max }
-    }
-}
-
-impl<D: Dim> From<(UdimRepr, UdimRepr)> for Range<D> {
-    fn from((min, max): (UdimRepr, UdimRepr)) -> Self {
+/// Generic From instance to convert various things into Ranges.
+impl<D: Dim, T: Into<udim<D>>> From<(T, T)> for Range<D> {
+    fn from((min, max): (T, T)) -> Self {
         Range {
             min: min.into(),
             max: max.into(),
@@ -166,7 +128,8 @@ impl<D: Dim> From<(UdimRepr, UdimRepr)> for Range<D> {
     }
 }
 
-/// An axis-aligned bounding box consisting of an upper left corner (x1, y1) and lower right corner (x2, y2)
+/// An axis-aligned bounding box consisting of an upper-left corner (x1, y1) and lower-right corner (x2, y2)
+/// This assumes that x coordinates grow to the right and y coordinates grow downward.
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct AABB {
     x1: dimX,
@@ -186,12 +149,12 @@ impl AABB {
         }
     }
 
-    /// Create a new AABB from the upper left corner and a width & height.
+    /// Create a new AABB from the upper-left corner and a width & height.
     pub fn new_wh(x: dimX, y: dimY, width: dimX, height: dimY) -> Self {
         AABB::new(x, y, x + width, y + height)
     }
 
-    /// Combines two AABB's by creating the smallest AABB that contains both.
+    /// Combines two AABBs by creating the smallest AABB that contains both.
     pub fn union(self, rhs: Self) -> Self {
         AABB {
             x1: min(self.x1, rhs.x1),
@@ -217,36 +180,30 @@ impl AABB {
     }
 
     /// Returns the AABB's range in the X dimension.
-    pub fn x(&self) -> Range<X> {
-        Range {
-            min: self.x1.into(),
-            max: self.x2.into(),
-        }
+    pub fn xrange(&self) -> Range<X> {
+        Range::new(self.x1, self.x2)
     }
 
     /// Returns the AABB's range in the Y dimension.
-    pub fn y(&self) -> Range<Y> {
-        Range {
-            min: self.y1.into(),
-            max: self.y2.into(),
-        }
+    pub fn yrange(&self) -> Range<Y> {
+        Range::new(self.y1, self.y2)
     }
 
     /// Returns the AABB's width.
     pub fn width(&self) -> dimX {
-        self.x2 - self.x1
+        self.xrange().length()
     }
 
     /// Returns the AABB's height.
     pub fn height(&self) -> dimY {
-        self.y2 - self.y1
+        self.yrange().length()
     }
 
     /// Returns the AABB's midpoint.
     pub fn midpoint(&self) -> Point2D {
         Point2D {
-            x: self.x().midpoint(),
-            y: self.y().midpoint(),
+            x: self.xrange().midpoint(),
+            y: self.yrange().midpoint(),
         }
     }
 }
@@ -283,14 +240,9 @@ impl From<&xrandr::Monitor> for AABB {
     }
 }
 
-impl From<Point2D> for AABB {
-    fn from(p: Point2D) -> Self {
-        AABB::new(p.x, p.y, p.x, p.y)
-    }
-}
-
-impl From<(UdimRepr, UdimRepr, UdimRepr, UdimRepr)> for AABB {
-    fn from((x1, y1, x2, y2): (UdimRepr, UdimRepr, UdimRepr, UdimRepr)) -> Self {
+/// Generic From instance to convert various things into AABBs.
+impl<T: Into<dimX> + Into<dimY>> From<(T, T, T, T)> for AABB {
+    fn from((x1, y1, x2, y2): (T, T, T, T)) -> Self {
         AABB::new(x1.into(), y1.into(), x2.into(), y2.into())
     }
 }

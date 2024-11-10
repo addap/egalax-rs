@@ -1,4 +1,4 @@
-//! Implements parsing of the raw binary packets that the touchscreen sends.
+//! Implements parsing of the packets that are received from the hidraw interface.
 
 use evdev_rs::TimeVal;
 use std::fmt;
@@ -8,7 +8,7 @@ use crate::{error::ParsePacketError, geo::Point2D, units::*};
 /// Length of a raw packet.
 pub const RAW_PACKET_LEN: usize = 6;
 
-/// Type of raw packets sent over USB.
+/// Type of raw packets.
 #[derive(Debug, Clone, Copy)]
 pub struct RawPacket(pub [u8; RAW_PACKET_LEN]);
 
@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(
             Ok(USBPacket {
                 touch_state: TouchState::IsTouching,
-                position: (306.0, 315.0).into(),
+                position: (306, 315).into(),
                 resolution: 12
             }),
             USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))
@@ -177,7 +177,7 @@ mod tests {
         assert_eq!(
             Ok(USBPacket {
                 touch_state: TouchState::IsTouching,
-                position: (313.0, 309.0).into(),
+                position: (313, 309).into(),
                 resolution: 12
             }),
             USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))

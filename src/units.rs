@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     marker::PhantomData,
-    ops::{Add, Div, Mul, Sub},
+    ops::{Add, Mul, Sub},
 };
 
 /// X dimension.
@@ -29,12 +29,12 @@ impl Dim for X {}
 impl Dim for Y {}
 
 /// Integer type of a screen dimension
-pub type UdimRepr = f32;
+pub type UdimRepr = i32;
 
 /// Wrapper which uses PhantomData to statically tell apart numbers of different dimensions.
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct udim<D: Dim>(PhantomData<D>, UdimRepr);
 
 /// Number in X dimension.
@@ -51,9 +51,9 @@ impl<D: Dim> udim<D> {
         self.1
     }
 
-    /// The underlying dimensionless value as an integer.
-    pub fn int(self) -> i32 {
-        self.value() as i32
+    /// The underlying dimensionless value as an f32.
+    pub fn float(self) -> f32 {
+        self.value() as f32
     }
 }
 
@@ -63,24 +63,15 @@ impl<D: Dim> fmt::Display for udim<D> {
     }
 }
 
-impl<D: Dim> From<u16> for udim<D> {
-    fn from(x: u16) -> Self {
-        (x as UdimRepr).into()
+/// Generic From instance to convert scalar values into udim<D>.
+/// We use this mainly for UdimRepr and smaller types such as f16.
+impl<D: Dim, T: Into<UdimRepr>> From<T> for udim<D> {
+    fn from(x: T) -> Self {
+        udim(PhantomData, x.into())
     }
 }
 
-impl<D: Dim> From<i32> for udim<D> {
-    fn from(x: i32) -> Self {
-        (x as UdimRepr).into()
-    }
-}
-
-impl<D: Dim> From<f32> for udim<D> {
-    fn from(x: f32) -> Self {
-        udim(PhantomData, x)
-    }
-}
-
+/// Arithmetic instances.
 impl<D: Dim> Add for udim<D> {
     type Output = Self;
 
@@ -97,36 +88,15 @@ impl<D: Dim> Sub for udim<D> {
     }
 }
 
-impl<D: Dim> Mul<udim<D>> for udim<D> {
+impl<D: Dim> Mul<f32> for udim<D> {
     type Output = udim<D>;
 
-    fn mul(self, rhs: udim<D>) -> Self::Output {
-        (self.1 * rhs.1).into()
+    fn mul(self, rhs: f32) -> Self::Output {
+        ((self.1 as f32 * rhs) as UdimRepr).into()
     }
 }
 
-impl<D: Dim> Div<udim<D>> for udim<D> {
-    type Output = udim<D>;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        (self.1 / rhs.1).into()
-    }
-}
-
-impl<D: Dim> PartialEq for udim<D> {
-    fn eq(&self, other: &Self) -> bool {
-        self.1.total_cmp(&other.1).is_eq()
-    }
-}
-
-impl<D: Dim> Eq for udim<D> {}
-
-impl<D: Dim> Ord for udim<D> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.1.total_cmp(&other.1)
-    }
-}
-
+/// Serialization instances.
 impl<D: Dim> Serialize for udim<D> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

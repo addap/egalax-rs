@@ -81,15 +81,15 @@ impl EventGen {
     fn add_move_position(&mut self, position: Point2D, monitor_cfg: &Config) {
         let x_scale = monitor_cfg
             .calibration_points()
-            .x()
+            .xrange()
             .linear_factor(position.x);
-        let x_monitor = monitor_cfg.monitor_area.x().lerp(x_scale);
+        let x_monitor = monitor_cfg.monitor_area.xrange().lerp(x_scale);
 
         let y_scale = monitor_cfg
             .calibration_points()
-            .y()
+            .yrange()
             .linear_factor(position.y);
-        let y_monitor = monitor_cfg.monitor_area.y().lerp(y_scale);
+        let y_monitor = monitor_cfg.monitor_area.yrange().lerp(y_scale);
 
         log::info!("Moving to x {}", x_monitor.value());
         log::info!("Moving to y {}", y_monitor.value());
@@ -97,12 +97,12 @@ impl EventGen {
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_X),
-            x_monitor.int(),
+            x_monitor.value(),
         ));
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_Y),
-            y_monitor.int(),
+            y_monitor.value(),
         ));
     }
 
@@ -228,8 +228,8 @@ impl Driver {
         // that are restricted to the screen space of the designated monitor.
         let abs_info_x: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.config.screen_space.x().min.int(),
-            maximum: self.config.screen_space.x().max.int(),
+            minimum: self.config.screen_space.xrange().min().value(),
+            maximum: self.config.screen_space.xrange().max().value(),
             // TODO test if fuzz value works as expected. should remove spurious drags when pressing long for right-click
             fuzz: 50,
             flat: 0,
@@ -238,8 +238,8 @@ impl Driver {
 
         let abs_info_y: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.config.screen_space.y().min.int(),
-            maximum: self.config.screen_space.y().max.int(),
+            minimum: self.config.screen_space.yrange().min().value(),
+            maximum: self.config.screen_space.yrange().max().value(),
             fuzz: 50,
             flat: 0,
             resolution: 0,
