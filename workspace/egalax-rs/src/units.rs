@@ -64,7 +64,7 @@ impl<D: Dim> fmt::Display for udim<D> {
 }
 
 /// Generic From instance to convert scalar values into udim<D>.
-/// We use this mainly for UdimRepr and smaller types such as f16.
+/// We use this mainly for UdimRepr and smaller types such as i16.
 impl<D: Dim, T: Into<UdimRepr>> From<T> for udim<D> {
     fn from(x: T) -> Self {
         udim(PhantomData, x.into())

@@ -1,0 +1,11 @@
+[workspace]
+
+resolver = "2"
+
+members = [
+    "egalax-rs",
+    "gui" 
+]
+
+[workspace.dependencies]
+xrandr = { version = "0.2.0" }

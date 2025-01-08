@@ -1,12 +1,14 @@
+use std::fs::OpenOptions;
+use std::result::Result;
+
 use egalax_rs::config::ConfigFile;
 use egalax_rs::driver::virtual_mouse;
-use std::result::Result;
-use std::{error, fs::OpenOptions};
+use egalax_rs::error::EgalaxError;
 
 const USAGE: &str = "Usage: egalax-rs /dev/hidraw.egalax";
 
 /// Read configuration and delegate to virtual mouse function.
-fn main() -> Result<(), Box<dyn error::Error>> {
+fn main() -> Result<(), EgalaxError> {
     env_logger::init();
 
     let node_path = std::env::args().nth(1).expect(USAGE);

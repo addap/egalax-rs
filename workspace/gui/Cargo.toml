@@ -1,0 +1,23 @@
+[package]
+name = "gui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+egalax-rs = { path = "../egalax-rs" }
+env_logger = "0.11.6"
+log = "0.4.22"
+eframe = "0.30.0"
+egui = "0.30.0"
+anyhow = "1.0.95"
+rodio = { version = "0.20.1", optional = true, default-features = false, features = [ "mp3" ] }
+awedio = { version = "0.4.1", optional = true, default-features = false, features = [ "cpal", "symphonia-mp3" ] }
+toml = "0.8.19"
+nix = { version = "0.29.0", default-features = false, features = ["poll"] }
+evdev-rs = "0.6.1"
+const_format = "0.2.34"
+xrandr = { workspace = true }
+async-channel = "2.3.1"
+
+[features]
+audio = [ "rodio", "awedio" ]

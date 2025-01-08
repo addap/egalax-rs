@@ -89,20 +89,20 @@ impl<D: Dim> Range<D> {
 
     /// Computes the linear factor of a value inside a range.
     pub fn linear_factor(&self, x: udim<D>) -> f32 {
-        // x = t * min + (1 - t) * max
+        // x = (1 - t) * min + t * max
         // solve for t
-        // => t = (max - x)/(max - min)
+        // => t = (x - min)/(max - min)
         if self.max == self.min {
             0.0
         } else {
-            let t = (self.max - x).float() / (self.max - self.min).float();
+            let t = (x - self.min).float() / (self.max - self.min).float();
             t
         }
     }
 
     /// Computes a linear interpolation in a range.
     pub fn lerp(&self, t: f32) -> udim<D> {
-        self.min * t + self.max * (1.0 - t)
+        self.min * (1.0 - t) + self.max * t
     }
 
     /// Computes the midpoint of a range.
@@ -222,7 +222,7 @@ impl Default for AABB {
 impl fmt::Display for AABB {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = format!(
-            "ul: ({}, {})\tlr: ({}, {})",
+            "upper-left: ({}, {})\tlower-right: ({}, {})",
             self.x1, self.y1, self.x2, self.y2
         );
         f.write_str(&description)
