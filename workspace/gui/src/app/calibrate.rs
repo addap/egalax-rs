@@ -1,27 +1,21 @@
 use anyhow::anyhow;
 use async_channel::TryRecvError;
-use egui::{
-    mutex::Mutex, vec2, Color32, Id, Key, Painter, Pos2, Rect, Stroke, TextStyle, Vec2,
-    ViewportClass, ViewportId,
-};
+use egui::{vec2, Color32, Id, Key, Painter, Pos2, Rect, Stroke, TextStyle, Vec2, ViewportId};
 use evdev_rs::TimeVal;
 use nix::poll::{self, PollFd, PollFlags, PollTimeout};
 use std::{
     collections::VecDeque,
     fs::{File, OpenOptions},
     io::Read,
-    mem,
-    ops::DerefMut,
     os::fd::AsFd,
     path::PathBuf,
-    sync::Arc,
     thread::{self, JoinHandle},
 };
 use std::{path::Path, time::SystemTime};
 
 #[cfg(feature = "audio")]
 use super::audio::{self, Sound};
-use super::{CalibratorWindow, FOOTER_STYLE};
+use super::{WindowResponse, FOOTER_STYLE};
 use egalax_rs::{
     config::ConfigCommon,
     error::EgalaxError,
@@ -234,46 +228,20 @@ impl Calibrator {
         }
     }
 
-    pub fn update(
-        state: &Arc<Mutex<CalibratorWindow>>,
-        ctx: &egui::Context,
-        // original_ctx: &egui::Context,
-        class: egui::ViewportClass,
-    ) {
-        assert!(class == ViewportClass::Deferred);
-
-        let mut guard = state.lock();
-        match guard.deref_mut() {
-            CalibratorWindow::Deactivated => panic!("Calibrator::update: called but state is off."),
-            CalibratorWindow::Finished(_) => {
-                log::warn!("Calibrator::update: called but state is finished.")
-            }
-            CalibratorWindow::Running(slf) => {
-                let result = slf.process_input(ctx);
-                slf.draw(ctx);
-
-                if let Some(calibration_points) = result {
-                    // We need ownership of the calibrator so we mem::replace it.
-                    let CalibratorWindow::Running(slf) = mem::replace(
-                        guard.deref_mut(),
-                        CalibratorWindow::Finished(calibration_points),
-                    ) else {
-                        unreachable!("We are in a lock and have already matched the constructor.")
-                    };
-                    slf.tx_exit
-                        .send_blocking(())
-                        .expect("Packet reader thread holds receiver until we send the signal.");
-                    slf.reader_handle.join().unwrap();
-                    #[cfg(feature = "audio")]
-                    slf.audio_handle.play(Sound::Wow);
-                    // Need to send this command to actually close the window.
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            }
-        }
+    pub fn exit(self) {
+        self.tx_exit
+            .send_blocking(())
+            .expect("Packet reader thread holds receiver until we send the signal.");
+        self.reader_handle.join().unwrap();
     }
 
-    fn process_input(&mut self, ctx: &egui::Context) -> Option<Option<AABB>> {
+    pub fn update(&mut self, ctx: &egui::Context) -> WindowResponse<Option<AABB>> {
+        let result = self.process_input(ctx);
+        self.draw(ctx);
+        result
+    }
+
+    fn process_input(&mut self, ctx: &egui::Context) -> WindowResponse<Option<AABB>> {
         // Take as many packages as are available.
         loop {
             match self.rx_packet.try_recv() {
@@ -288,18 +256,20 @@ impl Calibrator {
         }
 
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
-            return Some(None);
+            return WindowResponse::Finish(None);
         }
 
         match self.state {
             CalibrationState::Ongoing(_) => {}
             CalibrationState::Finished { calibration_points } => {
                 if ctx.input(|i| i.key_pressed(Key::Enter)) {
-                    return Some(Some(calibration_points));
+                    #[cfg(feature = "audio")]
+                    self.audio_handle.play(Sound::Wow);
+                    return WindowResponse::Finish(Some(calibration_points));
                 }
             }
         };
-        None
+        WindowResponse::Continue
     }
 
     fn add_decal(&mut self, position: Point2D) {

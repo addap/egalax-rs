@@ -3,19 +3,11 @@ mod audio;
 mod calibrate;
 
 use const_format::formatcp;
-use egui::{mutex::Mutex, vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder};
-use std::{
-    mem,
-    ops::{Deref, DerefMut},
-    path::PathBuf,
-    sync::Arc,
-};
+use egui::{vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder, ViewportClass};
+use std::{mem, path::PathBuf};
 
 use calibrate::Calibrator;
-use egalax_rs::{
-    config::{self, ConfigFile},
-    geo::AABB,
-};
+use egalax_rs::config::{self, ConfigFile};
 
 const CONFIG_FILE_PATH: &str = "./config.toml";
 const FOOTER_STYLE: &str = "footer";
@@ -35,10 +27,14 @@ impl Input {
     }
 }
 
-enum CalibratorWindow {
+enum WindowState<T> {
     Deactivated,
-    Running(Calibrator),
-    Finished(Option<AABB>),
+    Running(T),
+}
+
+enum WindowResponse<T> {
+    Continue,
+    Finish(T),
 }
 
 pub struct App {
@@ -47,7 +43,7 @@ pub struct App {
     input: Input,
     monitors: Vec<String>,
     device_path: PathBuf,
-    calibrator_state: Arc<Mutex<CalibratorWindow>>,
+    calibrator_window: WindowState<Calibrator>,
     #[cfg(feature = "audio")]
     sound_manager: audio::SoundManager,
 }
@@ -73,7 +69,7 @@ impl App {
             input,
             monitors,
             device_path,
-            calibrator_state: Arc::new(Mutex::new(CalibratorWindow::Deactivated)),
+            calibrator_window: WindowState::Deactivated,
             #[cfg(feature = "audio")]
             sound_manager,
         }
@@ -208,16 +204,10 @@ impl App {
             #[cfg(feature = "audio")]
             self.sound_manager.get_handle(),
         );
-        let mut guard = self.calibrator_state.lock();
-        let old_state = mem::replace(guard.deref_mut(), CalibratorWindow::Running(calibrator));
-
-        match old_state {
-            CalibratorWindow::Deactivated => {}
-            CalibratorWindow::Running(_) => {
+        match self.calibrator_window {
+            WindowState::Deactivated => self.calibrator_window = WindowState::Running(calibrator),
+            WindowState::Running(_) => {
                 panic!("start_calibration: calibrator already running.")
-            }
-            CalibratorWindow::Finished(_) => {
-                panic!("start_calibration: calibrator already finished.")
             }
         }
     }
@@ -225,30 +215,46 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let mut guard = self.calibrator_state.lock();
-        match guard.deref() {
-            CalibratorWindow::Deactivated => {
-                drop(guard);
+        let old_state = mem::replace(&mut self.calibrator_window, WindowState::Deactivated);
+
+        match old_state {
+            WindowState::Deactivated => {
                 self.process_input(ctx);
                 self.draw(ctx);
             }
-            CalibratorWindow::Running(_) => {
-                let calibrator_state = self.calibrator_state.clone();
+            WindowState::Running(mut calibrator) => {
                 let viewport_id = egui::ViewportId(Id::new("calibrator"));
                 let viewport_builder = ViewportBuilder::default()
                     .with_title("Calibrator")
                     .with_fullscreen(true);
 
-                ctx.show_viewport_deferred(viewport_id, viewport_builder, move |ctx, class| {
-                    Calibrator::update(&calibrator_state, ctx, class);
-                });
-            }
-            CalibratorWindow::Finished(result) => {
-                if let Some(calibration_points) = result {
-                    self.current_config.common.calibration_points = *calibration_points;
+                let response =
+                    ctx.show_viewport_immediate(viewport_id, viewport_builder, |ctx, class| {
+                        assert!(class == ViewportClass::Immediate);
+                        let response = calibrator.update(ctx);
+                        match response {
+                            WindowResponse::Finish(_) => {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close)
+                            }
+                            WindowResponse::Continue => {}
+                        }
+                        response
+                    });
+
+                match response {
+                    WindowResponse::Continue => {
+                        self.calibrator_window = WindowState::Running(calibrator);
+                    }
+                    WindowResponse::Finish(result) => {
+                        match result {
+                            None => {}
+                            Some(calibration_points) => {
+                                self.current_config.common.calibration_points = calibration_points;
+                            }
+                        }
+                        calibrator.exit();
+                    }
                 }
-                *guard = CalibratorWindow::Deactivated;
-                // Need to request repaint (or call draw function) to repaint GUI.
                 ctx.request_repaint();
             }
         }
