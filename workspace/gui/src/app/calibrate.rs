@@ -15,7 +15,7 @@ use std::{path::Path, time::SystemTime};
 
 #[cfg(feature = "audio")]
 use super::audio::{self, Sound};
-use super::{WindowResponse, FOOTER_STYLE};
+use super::{CalibratorWindowResponse, FOOTER_STYLE};
 use egalax_rs::{
     config::ConfigCommon,
     error::EgalaxError,
@@ -235,13 +235,13 @@ impl Calibrator {
         self.reader_handle.join().unwrap();
     }
 
-    pub fn update(&mut self, ctx: &egui::Context) -> WindowResponse<Option<AABB>> {
+    pub fn update(&mut self, ctx: &egui::Context) -> CalibratorWindowResponse {
         let result = self.process_input(ctx);
         self.draw(ctx);
         result
     }
 
-    fn process_input(&mut self, ctx: &egui::Context) -> WindowResponse<Option<AABB>> {
+    fn process_input(&mut self, ctx: &egui::Context) -> CalibratorWindowResponse {
         // Take as many packages as are available.
         loop {
             match self.rx_packet.try_recv() {
@@ -256,7 +256,7 @@ impl Calibrator {
         }
 
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
-            return WindowResponse::Finish(None);
+            return CalibratorWindowResponse::Finish(None);
         }
 
         match self.state {
@@ -265,11 +265,11 @@ impl Calibrator {
                 if ctx.input(|i| i.key_pressed(Key::Enter)) {
                     #[cfg(feature = "audio")]
                     self.audio_handle.play(Sound::Wow);
-                    return WindowResponse::Finish(Some(calibration_points));
+                    return CalibratorWindowResponse::Finish(Some(calibration_points));
                 }
             }
         };
-        WindowResponse::Continue
+        CalibratorWindowResponse::Continue
     }
 
     fn add_decal(&mut self, position: Point2D) {
