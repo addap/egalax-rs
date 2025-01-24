@@ -4,6 +4,7 @@ mod calibrate;
 
 use const_format::formatcp;
 use egui::{vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder, ViewportClass};
+use evdev_rs::enums::EV_KEY;
 use std::{mem, path::PathBuf};
 
 use calibrate::Calibrator;
@@ -15,6 +16,116 @@ use egalax_rs::{
 const CONFIG_FILE_PATH: &str = "./config.toml";
 const FOOTER_STYLE: &str = "footer";
 const CONTENT_OFFSET: f32 = 0.3;
+const EV_KEYS: [EV_KEY; 108] = [
+    EV_KEY::BTN_0,
+    EV_KEY::BTN_1,
+    EV_KEY::BTN_2,
+    EV_KEY::BTN_3,
+    EV_KEY::BTN_4,
+    EV_KEY::BTN_5,
+    EV_KEY::BTN_6,
+    EV_KEY::BTN_7,
+    EV_KEY::BTN_8,
+    EV_KEY::BTN_9,
+    EV_KEY::BTN_LEFT,
+    EV_KEY::BTN_RIGHT,
+    EV_KEY::BTN_MIDDLE,
+    EV_KEY::BTN_SIDE,
+    EV_KEY::BTN_EXTRA,
+    EV_KEY::BTN_FORWARD,
+    EV_KEY::BTN_BACK,
+    EV_KEY::BTN_TASK,
+    EV_KEY::BTN_TRIGGER,
+    EV_KEY::BTN_THUMB,
+    EV_KEY::BTN_THUMB2,
+    EV_KEY::BTN_TOP,
+    EV_KEY::BTN_TOP2,
+    EV_KEY::BTN_PINKIE,
+    EV_KEY::BTN_BASE,
+    EV_KEY::BTN_BASE2,
+    EV_KEY::BTN_BASE3,
+    EV_KEY::BTN_BASE4,
+    EV_KEY::BTN_BASE5,
+    EV_KEY::BTN_BASE6,
+    EV_KEY::BTN_DEAD,
+    EV_KEY::BTN_SOUTH,
+    EV_KEY::BTN_EAST,
+    EV_KEY::BTN_C,
+    EV_KEY::BTN_NORTH,
+    EV_KEY::BTN_WEST,
+    EV_KEY::BTN_Z,
+    EV_KEY::BTN_TL,
+    EV_KEY::BTN_TR,
+    EV_KEY::BTN_TL2,
+    EV_KEY::BTN_TR2,
+    EV_KEY::BTN_SELECT,
+    EV_KEY::BTN_START,
+    EV_KEY::BTN_MODE,
+    EV_KEY::BTN_THUMBL,
+    EV_KEY::BTN_THUMBR,
+    EV_KEY::BTN_TOOL_PEN,
+    EV_KEY::BTN_TOOL_RUBBER,
+    EV_KEY::BTN_TOOL_BRUSH,
+    EV_KEY::BTN_TOOL_PENCIL,
+    EV_KEY::BTN_TOOL_AIRBRUSH,
+    EV_KEY::BTN_TOOL_FINGER,
+    EV_KEY::BTN_TOOL_MOUSE,
+    EV_KEY::BTN_TOOL_LENS,
+    EV_KEY::BTN_TOOL_QUINTTAP,
+    EV_KEY::BTN_STYLUS3,
+    EV_KEY::BTN_TOUCH,
+    EV_KEY::BTN_STYLUS,
+    EV_KEY::BTN_STYLUS2,
+    EV_KEY::BTN_TOOL_DOUBLETAP,
+    EV_KEY::BTN_TOOL_TRIPLETAP,
+    EV_KEY::BTN_TOOL_QUADTAP,
+    EV_KEY::BTN_GEAR_DOWN,
+    EV_KEY::BTN_GEAR_UP,
+    EV_KEY::BTN_DPAD_UP,
+    EV_KEY::BTN_DPAD_DOWN,
+    EV_KEY::BTN_DPAD_LEFT,
+    EV_KEY::BTN_DPAD_RIGHT,
+    EV_KEY::BTN_TRIGGER_HAPPY1,
+    EV_KEY::BTN_TRIGGER_HAPPY2,
+    EV_KEY::BTN_TRIGGER_HAPPY3,
+    EV_KEY::BTN_TRIGGER_HAPPY4,
+    EV_KEY::BTN_TRIGGER_HAPPY5,
+    EV_KEY::BTN_TRIGGER_HAPPY6,
+    EV_KEY::BTN_TRIGGER_HAPPY7,
+    EV_KEY::BTN_TRIGGER_HAPPY8,
+    EV_KEY::BTN_TRIGGER_HAPPY9,
+    EV_KEY::BTN_TRIGGER_HAPPY10,
+    EV_KEY::BTN_TRIGGER_HAPPY11,
+    EV_KEY::BTN_TRIGGER_HAPPY12,
+    EV_KEY::BTN_TRIGGER_HAPPY13,
+    EV_KEY::BTN_TRIGGER_HAPPY14,
+    EV_KEY::BTN_TRIGGER_HAPPY15,
+    EV_KEY::BTN_TRIGGER_HAPPY16,
+    EV_KEY::BTN_TRIGGER_HAPPY17,
+    EV_KEY::BTN_TRIGGER_HAPPY18,
+    EV_KEY::BTN_TRIGGER_HAPPY19,
+    EV_KEY::BTN_TRIGGER_HAPPY20,
+    EV_KEY::BTN_TRIGGER_HAPPY21,
+    EV_KEY::BTN_TRIGGER_HAPPY22,
+    EV_KEY::BTN_TRIGGER_HAPPY23,
+    EV_KEY::BTN_TRIGGER_HAPPY24,
+    EV_KEY::BTN_TRIGGER_HAPPY25,
+    EV_KEY::BTN_TRIGGER_HAPPY26,
+    EV_KEY::BTN_TRIGGER_HAPPY27,
+    EV_KEY::BTN_TRIGGER_HAPPY28,
+    EV_KEY::BTN_TRIGGER_HAPPY29,
+    EV_KEY::BTN_TRIGGER_HAPPY30,
+    EV_KEY::BTN_TRIGGER_HAPPY31,
+    EV_KEY::BTN_TRIGGER_HAPPY32,
+    EV_KEY::BTN_TRIGGER_HAPPY33,
+    EV_KEY::BTN_TRIGGER_HAPPY34,
+    EV_KEY::BTN_TRIGGER_HAPPY35,
+    EV_KEY::BTN_TRIGGER_HAPPY36,
+    EV_KEY::BTN_TRIGGER_HAPPY37,
+    EV_KEY::BTN_TRIGGER_HAPPY38,
+    EV_KEY::BTN_TRIGGER_HAPPY39,
+    EV_KEY::BTN_TRIGGER_HAPPY40,
+];
 
 struct Input {
     has_moved: String,
@@ -139,7 +250,7 @@ impl App {
                 ui.add_space(srect.lerp_inside(vec2(0.0, CONTENT_OFFSET)).y);
                 ui.horizontal(|ui| {
                     ui.label("Monitors: ");
-                    egui::ComboBox::from_label("")
+                    egui::ComboBox::from_id_salt(0)
                         .selected_text(self.current_config.monitor_designator.to_string())
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
@@ -152,6 +263,40 @@ impl App {
                                     &mut self.current_config.monitor_designator,
                                     config::MonitorDesignator::Named(monitor.clone()),
                                     monitor,
+                                );
+                            }
+                        });
+                });
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Left-Click Event ({:?}): ",
+                        self.current_config.common.ev_left_click
+                    ));
+                    egui::ComboBox::from_id_salt(1)
+                        .selected_text(format!("{:?}", self.current_config.common.ev_left_click))
+                        .show_ui(ui, |ui| {
+                            for ev_key in EV_KEYS {
+                                ui.selectable_value(
+                                    &mut self.current_config.common.ev_left_click,
+                                    ev_key,
+                                    format!("{:?}", ev_key),
+                                );
+                            }
+                        });
+                });
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Right-Click Event ({:?}): ",
+                        self.current_config.common.ev_right_click
+                    ));
+                    egui::ComboBox::from_id_salt(2)
+                        .selected_text(format!("{:?}", self.current_config.common.ev_right_click))
+                        .show_ui(ui, |ui| {
+                            for ev_key in EV_KEYS {
+                                ui.selectable_value(
+                                    &mut self.current_config.common.ev_right_click,
+                                    ev_key,
+                                    format!("{:?}", ev_key),
                                 );
                             }
                         });
@@ -193,9 +338,6 @@ impl App {
                         self.start_calibration(ctx);
                     }
                 });
-                // left-click event
-                // right-click event
-                // right-click wait time (ms)
             });
         });
     }

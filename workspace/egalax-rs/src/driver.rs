@@ -218,7 +218,11 @@ impl Driver {
         u.set_product_id(0xcafe);
         u.enable_property(&InputProp::INPUT_PROP_DIRECT)?;
 
-        log::info!("Set events that will be generated for virtual device.");
+        log::info!(
+            "Set events that will be generated for virtual device. Left: {:?}, right: {:?}",
+            self.config.ev_left_click(),
+            self.config.ev_right_click()
+        );
         u.enable_event_type(&EventType::EV_KEY)?;
         u.enable_event_code(&EventCode::EV_KEY(self.config.ev_left_click()), None)?;
         u.enable_event_code(&EventCode::EV_KEY(self.config.ev_right_click()), None)?;
