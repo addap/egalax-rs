@@ -16,6 +16,8 @@ nix = { version = "0.23", optional = true }
 tempdir = { version = "0.3.7", optional = true }
 evdev-rs = { version = "0.6", features = [ "serde" ] }
 xrandr = { workspace = true }
+xdg = "2.5.2"
+const_format = "0.2.34"
 
 [features]
 default = []

@@ -65,7 +65,6 @@ impl fmt::Display for Config {
 }
 
 // TODO use configparser instead of serde.
-// TODO use xdg to set config file.
 /// Common config options that are taken verbatim from the config file.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ConfigCommon {

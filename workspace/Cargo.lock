@@ -1057,6 +1057,7 @@ name = "egalax-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "const_format",
  "env_logger 0.9.3",
  "evdev-rs",
  "log",
@@ -1065,6 +1066,7 @@ dependencies = [
  "tempdir",
  "thiserror",
  "toml",
+ "xdg",
  "xrandr",
 ]
 
@@ -4216,6 +4218,12 @@ name = "xcursor"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ef33da6b1660b4ddbfb3aef0ade110c8b8a781a3b6382fa5f2b5b040fd55f61"
+
+[[package]]
+name = "xdg"
+version = "2.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 
 [[package]]
 name = "xdg-home"
