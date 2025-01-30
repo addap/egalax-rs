@@ -55,16 +55,18 @@ impl Config {
 
 impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_fmt(format_args!(
+        // a.d. Note that the backslash in a string literal escapes both the line break and the leasing whitespace of the next line.
+        write!(
+            f,
             "Total virtual screen space: {}.\n\
-            Monitor area within screen space: {}.
+            Monitor area within screen space: {}.\n\
             {}",
             self.screen_space, self.monitor_area, self.common
-        ))
+        )
     }
 }
 
-// TODO use configparser instead of serde.
+// a.d. TODO use configparser instead of serde.
 /// Common config options that are taken verbatim from the config file.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ConfigCommon {
@@ -100,14 +102,15 @@ impl Default for ConfigCommon {
 
 impl fmt::Display for ConfigCommon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(
+        write!(
+            f,
             "Calibration points of touchscreen: {}.\n\
             Right-click wait duration: {}ms.\n\
             Has-moved threshold: {}mm.",
             self.calibration_points,
             self.right_click_wait_ms,
             self.has_moved_threshold * 0.1,
-        ))
+        )
     }
 }
 
@@ -202,12 +205,11 @@ impl ConfigFile {
 
 impl fmt::Display for ConfigFile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = format!(
+        write!(
+            f,
             "Name of XRandR Output: {}.\n{}",
             self.monitor_designator, self.common
-        );
-
-        f.write_str(&description)
+        )
     }
 }
 
@@ -220,8 +222,8 @@ pub enum MonitorDesignator {
 impl fmt::Display for MonitorDesignator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let description = match self {
-            MonitorDesignator::Primary => String::from("*Primary*"),
-            MonitorDesignator::Named(name) => name.clone(),
+            MonitorDesignator::Primary => "*Primary*",
+            MonitorDesignator::Named(name) => name,
         };
         f.write_str(&description)
     }

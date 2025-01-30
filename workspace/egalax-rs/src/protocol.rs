@@ -14,10 +14,14 @@ pub struct RawPacket(pub [u8; RAW_PACKET_LEN]);
 
 impl fmt::Display for RawPacket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!(
-            "[{:#04x}, {:#04x}, {:#04x}, {:#04x}, {:#04x}, {:#04x}]",
+        // The #04x format specifier pads the value with 0's to a length of 4, prepends '0x' (leaving a length of 2 for the number itself)
+        // and shows the value in upper-case hex format.
+        // from https://doc.rust-lang.org/std/fmt/#sign0
+        write!(
+            f,
+            "[{:#04X}, {:#04X}, {:#04X}, {:#04X}, {:#04X}, {:#04X}]",
             self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
-        ))
+        )
     }
 }
 
@@ -123,8 +127,7 @@ impl fmt::Display for USBPacket {
             TouchState::IsTouching => "1",
             TouchState::NotTouching => "0",
         };
-        let description = format!("Touch={}, Point={}", touch, self.position);
-        f.write_str(&description)
+        write!(f, "Touch={}, Point={}", touch, self.position)
     }
 }
 
@@ -147,8 +150,7 @@ impl USBMessage {
 
 impl fmt::Display for USBMessage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = format!("Message at {:?}\nPacket: {}", self.time, self.packet);
-        f.write_str(&description)
+        write!(f, "Message at {:?}\nPacket: {}", self.time, self.packet)
     }
 }
 

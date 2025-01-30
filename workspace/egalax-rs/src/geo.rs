@@ -32,7 +32,7 @@ impl Point2D {
         (dx + dy) as f32
     }
 
-    /// Computes the magnitude of Vector.
+    /// Computes the magnitude of the origin vector.
     pub fn vec_magnitude(&self) -> f32 {
         self.euclidean_distance_to(&(0, 0).into())
     }
@@ -40,8 +40,7 @@ impl Point2D {
 
 impl fmt::Display for Point2D {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = format!("(x: {}, y: {})", self.x, self.y);
-        f.write_str(&description)
+        write!(f, "(x: {}, y: {})", self.x, self.y)
     }
 }
 
@@ -113,8 +112,7 @@ impl<D: Dim> Range<D> {
 
 impl<D: Dim> fmt::Display for Range<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = format!("({}, {})", self.min, self.max);
-        f.write_str(&description)
+        write!(f, "({}, {})", self.min, self.max)
     }
 }
 
@@ -221,11 +219,11 @@ impl Default for AABB {
 
 impl fmt::Display for AABB {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = format!(
+        write!(
+            f,
             "upper-left: ({}, {})\tlower-right: ({}, {})",
             self.x1, self.y1, self.x2, self.y2
-        );
-        f.write_str(&description)
+        )
     }
 }
 
