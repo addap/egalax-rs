@@ -1,1 +1,2 @@
-SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input", SYMLINK+="hidraw.egalax"
+# When creating /dev/hidraw* for the eGalax usb touchscreen, start the `egalax-rs@.service` with the device node as input.
+SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input", TAG+="systemd", ENV{SYSTEMD_WANTS}="egalax-rs@.service"

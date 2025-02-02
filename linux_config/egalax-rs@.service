@@ -1,0 +1,7 @@
+[Unit]
+Description=Input driver for eGalax touchscreen at %I.
+
+[Service]
+Type=simple
+Environment="RUST_LOG=warn"
+ExecStart=/home/adrian/.cargo/bin/egalax-rs --dev %I

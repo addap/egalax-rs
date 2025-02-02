@@ -33,25 +33,25 @@ Put the file `egalax@.service` into `/etc/systemd/system` and `53-egalax.rules` 
 
 ## File Structure
 
-- `c_src/` - C files to test some libc/kernel APIs.
 - `dis/` - Ghidra project to disassemble the manufacturer's eGTouchD driver.
 - `logs/` - Various log outputs which are discussed below.
-- `Guide/` - Resources from the manufacturer. PDFs which describe the the monitor and a raw binary protocol of the touchscreen.  
+- `Guide/` - Resources from the manufacturer. PDFs which describe the the monitor and a protocol of the touchscreen.  
            Though, our monitor actually uses a different protocol as discussed below.
 - `linux_config/` - Config files to automatically start the driver when the USB cable is plugged in.
-- `media/` - Resources for the calibration tool.
+- `workspace` - Code for the driver.
 
 ## Background
-We had an old iiyama ProLite T1930S monitor with an integrated touchscreen lying around which we didn't know how to use. There was probably a driver of the manufacturer that we could install, but wanting to learn more about Linux I decided to write our own userspace driver for it.
+At the student council we had an old iiyama ProLite T1930S monitor with an integrated touchscreen lying around which we didn't know how to use. There was probably a driver of the manufacturer that we could install, but wanting to learn more about Linux I decided to write our own userspace driver for it.
 
 A *userspace driver* is a driver that runs as a normal user program, interacting with kernel APIs to implement the driver behavior. I decided on this approach as there is less danger of breaking things and we can use any language that can do system calls. 
 Devices like mice, keyboards and touchscreens are collectively referred to as *human interface devices* (HID) and they are handled by the Linux [input subsystem](https://docs.kernel.org/input/input.html) which contains a generic usbhid driver that applies to many input devices. For userspace drivers the system exposes [uinput](https://docs.kernel.org/input/uinput.html) which allows creating and controlling virtual input devices.
 
-HID devices (yes, like ATM machine, sue me) communicate events (e.g. "button X was pressed") via binary messages called *HID reports* whose  schema is described by *HID report descriptors*.
-In general, the usbhid driver's job is to convert HID reports into Linux input events, which it knows how to do by first parsing the corresponding HID report descriptor for the device.
+HID devices (yes, like ATM machines, it just sounds better) communicate events (e.g. "button X was pressed") via binary messages called *HID reports* whose  schema is described by *HID report descriptors*.
+In general, the usbhid driver's job is to convert HID reports into Linux input events.
+It knows how to do this by first parsing the corresponding HID report descriptor for the device.
 
 Since we want to write our own driver we use the kernel's [hidraw interface](https://docs.kernel.org/hid/hidraw.html) to get access to the original HID reports. 
-Below is a summary of how a generic HID device works compared to how we plan to treat the touchscreen.
+Below is a summary of how a generic HID device with a kernel driver works compared to how we plan to treat the touchscreen.
 
 <table>
 <tr>
@@ -79,41 +79,40 @@ Below is a summary of how a generic HID device works compared to how we plan to 
     <td>
 
 ```
-X server & client
-    ^
-    |
-xf86-input-{evdev,libinput}
-    ^
-    | via /dev/input/eventX
-    |
-evdev
-    ^
-    |
-kernel (via usbhid)
-    ^
-    |
-physical device 
+  X server & client                   
+    ▲                                 
+    │                                 
+  xf86-input-{evdev,libinput}         
+    ▲                                 
+    │evdev                            
+    │                       user-space
+ ───┼─────────────────────────────────
+    │                     kernel-space
+    │                  input subsystem
+  hidraw driver                       
+    ▲                                 
+    │                                 
+  physical device                     
 ```
 
 </td>
 <td>
 
 ```
-X server & client
-    ^
-    |
-xf86-input-{evdev,libinput}
-              ^
-              | via /dev/eventX
-              \ 
-egalax-rs ---> evdev (uinput)
-    ^               
-    | via /dev/hidrawX 
-    |
-kernel (via hidraw driver)
-    ^
-    |
-physical device
+ X server & client                   
+   ▲                                 
+   │                                 
+ xf86-input-{evdev,libinput}         
+                    ▲                
+ egalax-rs─┐        │evdev           
+   ▲       │uinput  │      user-space            
+───┼───────▼────────┼────────────────
+   │                     kernel-space
+   │                  input subsystem
+ hidraw driver                       
+   ▲                                 
+   │                                 
+ physical device                     
 ```
 </td>
 </tr>
@@ -121,22 +120,22 @@ physical device
 
 Apart from writing the program itself, we need to clarify some points to carry out the plan:
 
-1. Ensuring that we do not get duplicate input events from the usbhid driver.
-2. Getting access to the hidraw device.
-3. Analyzing the binary protocol of the touchscreen.
+1. Ensure that the usbhid driver does not try to handle the touchscreen, which could lead to duplicate input events.
+2. Get access to the hidraw device.
+3. Analyze the binary protocol of the touchscreen.
 
 ### Ensuring that we do not get Duplicate Input Events from the usbhid Driver
 
-It turns out some Linux kernel module can already handle the touchscreen and generates evdev events for it, but in the default configuration the X server was not picking them up.
+It turns out that some part of the Linux kernel can already handle the touchscreen and generate evdev events for it, but in the default configuration the X server was not picking them up.
 
-I tried adding an xorg configuration file (put `linux_config/53-egalax-usbhid.conf` into `/etc/X11/xorg.conf.d/`). 
-This will actually cause the cursor to move but the movement is completely wrong when multiple monitors are active as the input is "stretched" over the entire virtual screen area.
+We can add an xorg configuration file (put `linux_config/53-egalax-usbhid.conf` into `/etc/X11/xorg.conf.d/`), to command the X server to retrieve these events via evdev.
+This will actually cause the mouse cursor to move but the movement is completely wrong when multiple monitors are active as the input is "stretched" over the entire virtual screen area.
 Setting `--map-to-output` as described in the [arch wiki](https://wiki.archlinux.org/title/Touchscreen) might help.
-But the movement is also very choppy and I wasn't able to do a right-click, so I am not going to use this driver.
+But the movement is also very choppy and I wasn't able to generate a right-click, so I am not going to use this driver.
 
-I am not sure how exactly I can disable the kernel module from processing the touchscreen events (I did not want to blacklist the entire module) so I just deleted the xorg configuration file again so that the generated events do not reach the X server.
-Also, I am unsure whether the kernel module that does the processing here is `usbhid` or something called `usbtouchscreen`.
-I have no idea how these two relate, does usbhid delegate to usbtouchscreen, or are they alternatives and usbtouchscreen is just more specialized for touchscreens?
+I am not sure what part of the kernel actually does the processing.
+It is probably [`usbtouchscreen.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/usbtouchscreen.c) since others like [`egalax_ts.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/egalax_ts.c) and [`egalax_ts_serial.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/egalax_ts_serial.c) seem to handle eGalax touchscreens only for non-USB connections. 
+So I just deleted the xorg configuration file again so that the generated events do not reach the X server.
 
 ### Getting Access to the Hidraw Device
 The [hidraw](https://docs.kernel.org/hid/hidraw.html) documentation mentions the following.
@@ -144,8 +143,9 @@ The [hidraw](https://docs.kernel.org/hid/hidraw.html) documentation mentions the
 Hidraw uses a dynamic major number, meaning that udev should be relied on to create hidraw device nodes.
 ```
 
-This affected me as I used to use the first hidraw device `/dev/hidraw0` to read the touchscreen input but currently it is taken up by the buttons on my external USB speakers.
-For development it's easier if we have a static device node. For that we use the folloing udev rules in the file `linux_config/51-hidraw.rules`
+This affected me because some time ago I used to use the first hidraw device `/dev/hidraw0` to read the touchscreen input, but currently this device is taken up by the buttons on my external USB speakers.
+For development it's easier if we have a static device node. 
+For that we use the following udev rules in the file `linux_config/51-hidraw-dev.rules`
 ```
 SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input", SYMLINK+="hidraw.egalax"
 ```
@@ -190,13 +190,13 @@ $ xxd -b /dev/hidraw.egalax
 0000005a: 00000010 00000010 00110111 00000001 10100111 00001110  ..7...
 ```
 
-Each HID report consists of 6 bytes, which we number `m[0]` to `m[5]`.
-We can see the following pattern, where the first two bytes except the touch flag are probably some constant metadata and padding.
+Each HID report `m` consists of 6 bytes, which we number `m[0]` to `m[5]` from left to right. (However, bits are numbered from right to left.)
+We can see the following pattern, where the first two bytes except for the touch flag are probably some constant metadata and padding.
 
 ```
 m[0]        = 0x2 is constant
 m[1][0]     = indicates whether we are touching or releasing a finger
-m[1][7:1]   = 0b0000001_ is constant
+m[1][7:1]   = 0b0000001, is constant
 
 m[3] | m[2] = touch y position (little-endian)
 m[5] | m[4] = touch x position (little-endian)
@@ -205,7 +205,8 @@ m[5] | m[4] = touch x position (little-endian)
 #### 2. Reading the HID report descriptor
 
 Instead of crudely reading the actual HID reports we can also take a look at the HID report descriptors that describe their schema. 
-This can be done using the `usbhid-dump` utitilty. We just need to point it to the correct device using the USB bus and device ID from above.
+This can be done using the `usbhid-dump` utitilty. 
+We just need to point it to the correct device using the USB bus and device ID from above.
 
 ```
 $ sudo usbhid-dump -a 5:27 -p
@@ -295,20 +296,24 @@ But as explained in the [HID introduction of the Linux kernel documentation](htt
 ```
 
 I'm still not sure what everything here means but apparently there are two kinds of reports, one being a "Pointer(Pointer)", the other a "Touch Screen(Stylus)". 
-Both have buttons with binary state (logical minimum = 0 & logical maximum = 1) that are represented by 2 bits (report count = 2 & report size = 1). Then follow 6 bits of padding to complete a byte. Afterwards come the X and Y coordinates with 16 bits each (I assume the push & pop in the second report somehow apply the 16 bit report size to both).
+Both have 2 buttons with binary state (logical minimum = 0 & logical maximum = 1) that are represented by 1 bit each (report count = 2 & report size = 1). Then follow 6 bits of padding to complete a byte. Afterwards come the X and Y coordinates with 16 bits each (I assume the `Push` & `Pop` in the second report somehow apply the 16 bit report size to both).
 
-In total this maps nicely to the values we see from the hidraw interface. The hidraw documentation tells us that "On a device which uses numbered reports, the first byte of the returned data will be the report number; the report data follows, beginning in the second byte."
+In total this maps nicely to the values we see from the hidraw interface. 
+The hidraw documentation tells us that "On a device which uses numbered reports, the first byte of the returned data will be the report number; the report data follows, beginning in the second byte."
 That means the first byte `m[0]` that was a constant `0x2` designates the second type of HID reports for the touch screen interface.
 The second byte `m[1]` includes two bits for the buttons and the rest is constant. Bytes `m[5:2]` then contain the X and Y value, although from my tests the Y position came first.
 
-While the first bit for the button is also what we observed, the second bit `m[1][1]` was a constant `1` and I am not aware of a second button that triggers it.
-The report descriptor mentions its usage as "In Range" and from analyzing the source code of the manufacturer's driver below my theory is that bits `m[1][2:1]` indicate the screen resolution, so bit `m[1][1]` should have also been declared as constant instead of a button. 
+While the first `m[1][0]` as a "finger is touching" button is also what we observed, the second bit `m[1][1]` was a constant `1` and I am not aware of a second button that triggers it.
+The report descriptor mentions its usage as "In Range".
+From analyzing the source code of the manufacturer's driver (below) my theory is that bits `m[1][2:1]` indicate the screen resolution, so bit `m[1][1]` should have also been declared as constant instead of a button. 
 
-Also, the minimum and maximum values for X (min 30, max 4040) and Y (min 60, max 4035) from the report descriptor seem to be wrong. From trying to touch the outermost part of the monitor, both values actually seem to range from ca. 300 to ca. 3750.
+Also, the minimum and maximum values for X (min 30, max 4040) and Y (min 60, max 4035) from the report descriptor are not what I observed.
+That could be due to some of the touchscreen lying under the plastic bezel or an insufficient default calibration.
+From trying to touch the outermost part of the monitor, both values actually seem to range from ca. 300 to ca. 3750.
 Using the reported min and max values therefore results in a wrong cursor position.
 So manual calibration is unavoidable if we want to avoid magic numbers in our binary.
 
-#### 2. Using the manufacturer's driver
+#### 3. Using the manufacturer's driver
 
 So it turns out there was a [driver from the manufacturer](https://www.eeti.com/drivers_Linux.html) the whole time.
 While reading the raw HID reports and the HID report descriptors gives us an idea of how to parse the data, we can get an even better idea by analyzing this driver.
@@ -320,14 +325,15 @@ To summarize:
 1. The first HID report byte `0x2` corresponds to the normal kind of message expected 
 from the touch screen.
 1. The first bit of the second byte `m[1][0]` is the status bit for a touch event happening.
-2. The next two bits of the second byte `m[1][2:1]` encode the *resolution* of the touch screen. For our monitor it is a constant `0b01`, which according to the "Software Programming Guide (page 5)" corresponds to 12 bits of resolution in the X and Y axes.
+2. The next two bits of the second byte `m[1][2:1]` encode the *resolution* of the touch screen. For our monitor it is a constant `0b01`.
+According to the "Software Programming Guide (page 5)" corresponds to 12 bits of resolution in the X and Y axes, which is what we observe.
 3. Bytes `m[5:2]` are then the X and Y position (with a resolution of 12 bits) in little-endian byte order.
 
 ### Conclusion
 
 Putting everything together we can write a simple program that reads from the `/dev/hidraw.egalax` device node and creates uinput events which actually move the cursor. 
 I did not discuss the code at all here but I did add a lot of comments to make the source code easy to digest. 
-Most of it is straightforward anyways, except maybe for the admittedly a tad overengineered `units` module to define newtypes for numbers in X and Y dimensions, which statically prevents errors like adding an X and a Y coordinate (now who would do that?). 
+Most of it is straightforward anyways, except maybe for the overengineered `units` module to define newtypes for numbers in X and Y dimensions, which statically prevents errors like adding an X and a Y coordinate (now who would do that?). 
 
 ## Appendix
 ### Log Dumps
