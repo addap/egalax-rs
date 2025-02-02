@@ -1,131 +1,20 @@
 #[cfg(feature = "audio")]
 mod audio;
 mod calibrate;
+mod evdev_events;
 
-use const_format::formatcp;
 use egui::{vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder, ViewportClass};
-use evdev_rs::enums::EV_KEY;
-use std::{mem, path::PathBuf};
+use std::{fs::OpenOptions, mem, path::PathBuf};
 
 use calibrate::Calibrator;
 use egalax_rs::{
-    config::{self, ConfigFile},
+    config::{self, SerializedConfig},
     geo::AABB,
 };
+use evdev_events::EV_KEYS;
 
-const CONFIG_FILE_PATH: &str = "./config.toml";
 const FOOTER_STYLE: &str = "footer";
 const CONTENT_OFFSET: f32 = 0.3;
-const EV_KEYS: [EV_KEY; 108] = [
-    EV_KEY::BTN_0,
-    EV_KEY::BTN_1,
-    EV_KEY::BTN_2,
-    EV_KEY::BTN_3,
-    EV_KEY::BTN_4,
-    EV_KEY::BTN_5,
-    EV_KEY::BTN_6,
-    EV_KEY::BTN_7,
-    EV_KEY::BTN_8,
-    EV_KEY::BTN_9,
-    EV_KEY::BTN_LEFT,
-    EV_KEY::BTN_RIGHT,
-    EV_KEY::BTN_MIDDLE,
-    EV_KEY::BTN_SIDE,
-    EV_KEY::BTN_EXTRA,
-    EV_KEY::BTN_FORWARD,
-    EV_KEY::BTN_BACK,
-    EV_KEY::BTN_TASK,
-    EV_KEY::BTN_TRIGGER,
-    EV_KEY::BTN_THUMB,
-    EV_KEY::BTN_THUMB2,
-    EV_KEY::BTN_TOP,
-    EV_KEY::BTN_TOP2,
-    EV_KEY::BTN_PINKIE,
-    EV_KEY::BTN_BASE,
-    EV_KEY::BTN_BASE2,
-    EV_KEY::BTN_BASE3,
-    EV_KEY::BTN_BASE4,
-    EV_KEY::BTN_BASE5,
-    EV_KEY::BTN_BASE6,
-    EV_KEY::BTN_DEAD,
-    EV_KEY::BTN_SOUTH,
-    EV_KEY::BTN_EAST,
-    EV_KEY::BTN_C,
-    EV_KEY::BTN_NORTH,
-    EV_KEY::BTN_WEST,
-    EV_KEY::BTN_Z,
-    EV_KEY::BTN_TL,
-    EV_KEY::BTN_TR,
-    EV_KEY::BTN_TL2,
-    EV_KEY::BTN_TR2,
-    EV_KEY::BTN_SELECT,
-    EV_KEY::BTN_START,
-    EV_KEY::BTN_MODE,
-    EV_KEY::BTN_THUMBL,
-    EV_KEY::BTN_THUMBR,
-    EV_KEY::BTN_TOOL_PEN,
-    EV_KEY::BTN_TOOL_RUBBER,
-    EV_KEY::BTN_TOOL_BRUSH,
-    EV_KEY::BTN_TOOL_PENCIL,
-    EV_KEY::BTN_TOOL_AIRBRUSH,
-    EV_KEY::BTN_TOOL_FINGER,
-    EV_KEY::BTN_TOOL_MOUSE,
-    EV_KEY::BTN_TOOL_LENS,
-    EV_KEY::BTN_TOOL_QUINTTAP,
-    EV_KEY::BTN_STYLUS3,
-    EV_KEY::BTN_TOUCH,
-    EV_KEY::BTN_STYLUS,
-    EV_KEY::BTN_STYLUS2,
-    EV_KEY::BTN_TOOL_DOUBLETAP,
-    EV_KEY::BTN_TOOL_TRIPLETAP,
-    EV_KEY::BTN_TOOL_QUADTAP,
-    EV_KEY::BTN_GEAR_DOWN,
-    EV_KEY::BTN_GEAR_UP,
-    EV_KEY::BTN_DPAD_UP,
-    EV_KEY::BTN_DPAD_DOWN,
-    EV_KEY::BTN_DPAD_LEFT,
-    EV_KEY::BTN_DPAD_RIGHT,
-    EV_KEY::BTN_TRIGGER_HAPPY1,
-    EV_KEY::BTN_TRIGGER_HAPPY2,
-    EV_KEY::BTN_TRIGGER_HAPPY3,
-    EV_KEY::BTN_TRIGGER_HAPPY4,
-    EV_KEY::BTN_TRIGGER_HAPPY5,
-    EV_KEY::BTN_TRIGGER_HAPPY6,
-    EV_KEY::BTN_TRIGGER_HAPPY7,
-    EV_KEY::BTN_TRIGGER_HAPPY8,
-    EV_KEY::BTN_TRIGGER_HAPPY9,
-    EV_KEY::BTN_TRIGGER_HAPPY10,
-    EV_KEY::BTN_TRIGGER_HAPPY11,
-    EV_KEY::BTN_TRIGGER_HAPPY12,
-    EV_KEY::BTN_TRIGGER_HAPPY13,
-    EV_KEY::BTN_TRIGGER_HAPPY14,
-    EV_KEY::BTN_TRIGGER_HAPPY15,
-    EV_KEY::BTN_TRIGGER_HAPPY16,
-    EV_KEY::BTN_TRIGGER_HAPPY17,
-    EV_KEY::BTN_TRIGGER_HAPPY18,
-    EV_KEY::BTN_TRIGGER_HAPPY19,
-    EV_KEY::BTN_TRIGGER_HAPPY20,
-    EV_KEY::BTN_TRIGGER_HAPPY21,
-    EV_KEY::BTN_TRIGGER_HAPPY22,
-    EV_KEY::BTN_TRIGGER_HAPPY23,
-    EV_KEY::BTN_TRIGGER_HAPPY24,
-    EV_KEY::BTN_TRIGGER_HAPPY25,
-    EV_KEY::BTN_TRIGGER_HAPPY26,
-    EV_KEY::BTN_TRIGGER_HAPPY27,
-    EV_KEY::BTN_TRIGGER_HAPPY28,
-    EV_KEY::BTN_TRIGGER_HAPPY29,
-    EV_KEY::BTN_TRIGGER_HAPPY30,
-    EV_KEY::BTN_TRIGGER_HAPPY31,
-    EV_KEY::BTN_TRIGGER_HAPPY32,
-    EV_KEY::BTN_TRIGGER_HAPPY33,
-    EV_KEY::BTN_TRIGGER_HAPPY34,
-    EV_KEY::BTN_TRIGGER_HAPPY35,
-    EV_KEY::BTN_TRIGGER_HAPPY36,
-    EV_KEY::BTN_TRIGGER_HAPPY37,
-    EV_KEY::BTN_TRIGGER_HAPPY38,
-    EV_KEY::BTN_TRIGGER_HAPPY39,
-    EV_KEY::BTN_TRIGGER_HAPPY40,
-];
 
 struct Input {
     has_moved: String,
@@ -133,12 +22,16 @@ struct Input {
 }
 
 impl Input {
-    fn new(config_file: &ConfigFile) -> Self {
+    fn new(config_file: &SerializedConfig) -> Self {
         Self {
             has_moved: config_file.common.has_moved_threshold.to_string(),
             right_click_wait: config_file.common.right_click_wait_ms.to_string(),
         }
     }
+}
+
+struct StaticData {
+    quit_save_msg: String,
 }
 
 enum CalibratorWindowState {
@@ -152,12 +45,14 @@ enum CalibratorWindowResponse {
 }
 
 pub struct App {
-    current_config: ConfigFile,
-    original_config: ConfigFile,
+    current_config: SerializedConfig,
+    original_config: SerializedConfig,
     input: Input,
     monitors: Vec<String>,
     device_path: PathBuf,
+    config_path: PathBuf,
     calibrator_window: CalibratorWindowState,
+    static_data: StaticData,
     #[cfg(feature = "audio")]
     sound_manager: audio::SoundManager,
 }
@@ -165,25 +60,32 @@ pub struct App {
 impl App {
     pub fn new(
         device_path: PathBuf,
+        config_path: PathBuf,
+        original_config: SerializedConfig,
         monitors: Vec<String>,
         cc: &eframe::CreationContext<'_>,
     ) -> Self {
         cc.egui_ctx
             .options_mut(|options| options.fallback_theme = Theme::Light);
 
-        let config_file = ConfigFile::from_file(CONFIG_FILE_PATH).unwrap_or_default();
-        let input = Input::new(&config_file);
+        let current_config = original_config.clone();
+        let input = Input::new(&original_config);
+        let static_data = StaticData {
+            quit_save_msg: format!("Quit & save to \"{}\"", config_path.display()),
+        };
 
         #[cfg(feature = "audio")]
         let sound_manager = audio::SoundManager::init().unwrap();
 
         Self {
-            current_config: config_file.clone(),
-            original_config: config_file,
+            current_config,
+            original_config,
             input,
             monitors,
             device_path,
+            config_path,
             calibrator_window: CalibratorWindowState::Deactivated,
+            static_data,
             #[cfg(feature = "audio")]
             sound_manager,
         }
@@ -197,7 +99,11 @@ impl App {
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else if ctx.input(|i| i.key_pressed(Key::Enter)) {
-            if let Err(e) = self.current_config.save_file(CONFIG_FILE_PATH) {
+            let mut config_file = OpenOptions::new()
+                .write(true)
+                .open(&self.config_path)
+                .expect("TODO unable to open config file");
+            if let Err(e) = self.current_config.save_file(&mut config_file) {
                 eprintln!("{}", e);
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -229,10 +135,7 @@ impl App {
                 ("Esc", "Quit"),
                 ("r", "Reset"),
                 ("c", "Start Calibrator"),
-                (
-                    "Enter",
-                    formatcp!("Quit & save to \"{}\"", CONFIG_FILE_PATH),
-                ),
+                ("Enter", &self.static_data.quit_save_msg),
             ];
 
             ui.vertical(|ui| {

@@ -3,26 +3,23 @@ name = "egalax-rs"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-log = "0.4.14"
-env_logger = "0.9.0"
-serde = { version = "1.0", features = [ "derive" ] }
-toml = "0.8.19"
-thiserror = "1.0.63"
-anyhow = "1.0.86"
-nix = { version = "0.23", optional = true }
-tempdir = { version = "0.3.7", optional = true }
-evdev-rs = { version = "0.6", features = [ "serde" ] }
-xrandr = { workspace = true }
-xdg = "2.5.2"
-const_format = "0.2.34"
+log = { workspace = true }
+env_logger = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+const_format = { workspace = true }
 
-[features]
-default = []
-unix = [ "nix", "tempdir" ]
+evdev-rs = { workspace = true, features = [ "serde" ] }
+xrandr = { workspace = true }
+
+serde = { version = "1.0", features = [ "derive" ] }
+toml = { version = "0.8.19" }
+xdg = { version = "2.5.2" }
+
+[dev-dependencies]
+nix = { workspace = true, features = [ "fs" ] }
+tempdir = { version = "0.3.7" }
 
 [[example]]
 name = "simulate-hidraw"
-required-features = [ "unix" ]

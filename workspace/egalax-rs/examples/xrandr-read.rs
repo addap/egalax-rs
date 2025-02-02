@@ -2,10 +2,10 @@
 
 use std::error;
 
-use egalax_rs::config::ConfigFile;
+use egalax_rs::config::SerializedConfig;
 
 fn main() -> Result<(), Box<dyn error::Error>> {
-    let monitor_cfg = ConfigFile::default().build()?;
+    let monitor_cfg = SerializedConfig::default().build()?;
 
     println!("{}", monitor_cfg);
 

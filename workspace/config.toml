@@ -2,16 +2,15 @@
 Named = "HDMI-A-0"
 
 [common]
+right_click_wait_ms = 1500
 has_moved_threshold = 30.0
 ev_left_click = "BTN_LEFT"
 ev_right_click = "BTN_RIGHT"
 
 [common.calibration_points]
-x1 = 300
-y1 = 300
-x2 = 3800
-y2 = 3800
-
-[common.right_click_wait]
+x1 = 287
+y1 = 248
+x2 = 3740
+y2 = 3755
 secs = 1
 nanos = 500000000

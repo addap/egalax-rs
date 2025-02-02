@@ -1,9 +1,6 @@
 use evdev_rs::enums::EV_KEY;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::fs;
-use std::path::Path;
-use std::time::Duration;
+use std::{fmt, fs::File, io::Read, io::Write, time::Duration};
 use xrandr::Monitor;
 
 use crate::{error::EgalaxError, geo::AABB};
@@ -116,14 +113,14 @@ impl fmt::Display for ConfigCommon {
 
 /// Representation of config file which can be used to build a [MonitorConfig]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ConfigFile {
+pub struct SerializedConfig {
     /// Name of the xrandr output of the monitor on which touch events will be interpreted.
     pub monitor_designator: MonitorDesignator,
     /// Common config options.
     pub common: ConfigCommon,
 }
 
-impl ConfigFile {
+impl SerializedConfig {
     pub fn new(monitor_designator: MonitorDesignator, common: ConfigCommon) -> Self {
         Self {
             monitor_designator,
@@ -132,29 +129,23 @@ impl ConfigFile {
     }
 
     /// Load config from file.
-    pub fn from_file<P>(path: P) -> Result<Self, EgalaxError>
-    where
-        P: AsRef<Path>,
-    {
+    pub fn from_file(f: &mut File) -> Result<Self, EgalaxError> {
         log::trace!("Entering ConfigFile::from_file.");
 
-        let config_file = fs::read_to_string(path)?;
+        let mut config_file = String::new();
+        f.read_to_string(&mut config_file)?;
         let config_file = toml::from_str(&config_file)?;
-        log::debug!("Loaded config file:\n{}", config_file);
 
         log::trace!("Leaving ConfigFile::from_file.");
         Ok(config_file)
     }
 
-    pub fn save_file<P>(&self, path: P) -> Result<(), EgalaxError>
-    where
-        P: AsRef<Path>,
-    {
+    /// Save config to file.
+    pub fn save_file(&self, f: &mut File) -> Result<(), EgalaxError> {
         log::trace!("Entering ConfigFile::save_file");
 
         let config_file = toml::to_string_pretty(&self)?;
-        log::debug!("Saving config file:\n{}", config_file);
-        fs::write(path, config_file)?;
+        f.write_all(config_file.as_bytes())?;
 
         log::trace!("Leaving ConfigFile::save_file");
         Ok(())
@@ -203,7 +194,7 @@ impl ConfigFile {
     }
 }
 
-impl fmt::Display for ConfigFile {
+impl fmt::Display for SerializedConfig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,

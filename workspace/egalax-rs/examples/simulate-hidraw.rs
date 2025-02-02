@@ -1,4 +1,4 @@
-use egalax_rs::{config::ConfigFile, driver::virtual_mouse};
+use egalax_rs::{config::SerializedConfig, driver::virtual_mouse};
 use nix::{sys::stat, unistd::mkfifo};
 use std::{
     error,
@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     thread::spawn(move || virtual_sender(hidraw, path1));
     let mut reader = OpenOptions::new().read(true).open(&path).unwrap();
-    let monitor_cfg = ConfigFile::default().build()?;
+    let monitor_cfg = SerializedConfig::default().build()?;
     println!("setup complete");
 
     virtual_mouse(&mut reader, monitor_cfg)?;

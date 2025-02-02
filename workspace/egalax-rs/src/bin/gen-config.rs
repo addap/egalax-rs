@@ -1,10 +1,10 @@
 use std::{fs::OpenOptions, io::Write};
 
-use egalax_rs::config::ConfigFile;
+use egalax_rs::config::SerializedConfig;
 
 /// Generate a default config
 fn main() -> Result<(), anyhow::Error> {
-    let cf = ConfigFile::default();
+    let cf = SerializedConfig::default();
     println!("{:#?}", cf);
     let s = toml::to_string(&cf)?;
     let mut f = OpenOptions::new()
