@@ -26,8 +26,6 @@ $ cargo build
 $ cargo install --path .
 ```
 
-TODO: check if the config files still work.
-
 The `linux_config/` directory contains various configuration files to enable a smooth autostart for the driver. 
 Put the file `egalax@.service` into `/etc/systemd/system` and `53-egalax.rules` into `/etc/udev/rules.d` to automatically start the driver when the monitor USB cable is plugged in.
 

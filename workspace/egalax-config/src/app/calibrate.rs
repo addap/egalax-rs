@@ -306,7 +306,6 @@ impl Calibrator {
             match self.state {
                 CalibrationState::Ongoing(_) => {
                     let menu_items: [(&str, &str); 1] = [("Esc", "Quit & discard calibration")];
-                    // TODO abstract into some kind of widget
                     ui.vertical(|ui| {
                         let style = ui.style_mut();
                         style.override_text_style = Some(TextStyle::Name(FOOTER_STYLE.into()));

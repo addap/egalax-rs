@@ -104,6 +104,7 @@ impl App {
                 .open(&self.config_path)
                 .expect("TODO unable to open config file");
             if let Err(e) = self.current_config.save_file(&mut config_file) {
+                // a.d. TODO improve error handling.
                 eprintln!("{}", e);
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
