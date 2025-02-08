@@ -41,7 +41,7 @@ impl DriverState {
 
 impl Default for DriverState {
     fn default() -> Self {
-        DriverState {
+        Self {
             touch_state: DriverTouchState::NotTouching,
             is_right_click: false,
             has_moved: false,

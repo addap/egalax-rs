@@ -3,6 +3,7 @@
 use evdev_rs::TimeVal;
 use std::fmt;
 
+#[allow(clippy::wildcard_imports)]
 use crate::{error::ParsePacketError, geo::Point2D, units::*};
 
 /// Length of a raw packet.

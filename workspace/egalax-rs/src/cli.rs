@@ -42,7 +42,9 @@ impl fmt::Display for ProgramArgs {
 
 /// Print CLI usage and then exit with an error.
 fn exit_usage() -> ! {
-    let program = std::env::args().next().unwrap_or(String::from("<unknown>"));
+    let program = std::env::args()
+        .next()
+        .unwrap_or_else(|| String::from("<unknown>"));
     let usage = format!("Usage: {} [--dev FILE] [--config FILE]", program);
     eprintln!("{}", usage);
     exit(1)
@@ -59,7 +61,7 @@ impl ProgramArgs {
 
     /// Construct the [`Settings`] by parsing command line arguments and following XDG conventions.
     /// Exits the program if program arguments cannot be parsed correctly.
-    pub fn get() -> ProgramArgs {
+    pub fn get() -> Self {
         // Get command line arguments, skipping the program name.
         let mut args = std::env::args().skip(1);
         let mut device: Option<PathBuf> = None;
@@ -107,7 +109,7 @@ impl ProgramArgs {
             };
         }
 
-        ProgramArgs {
+        Self {
             device: device.unwrap_or_else(|| {
                 log::warn!("Using fallback device path: {}.", FALLBACK_DEVICE);
                 FALLBACK_DEVICE.into()

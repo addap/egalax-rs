@@ -67,7 +67,7 @@ impl<D: Dim> fmt::Display for udim<D> {
 /// We use this mainly for [`UdimRepr`] and smaller types such as i16.
 impl<D: Dim, T: Into<UdimRepr>> From<T> for udim<D> {
     fn from(x: T) -> Self {
-        udim(PhantomData, x.into())
+        Self(PhantomData, x.into())
     }
 }
 
@@ -89,7 +89,7 @@ impl<D: Dim> Sub for udim<D> {
 }
 
 impl<D: Dim> Mul<f32> for udim<D> {
-    type Output = udim<D>;
+    type Output = Self;
 
     fn mul(self, rhs: f32) -> Self::Output {
         ((self.1 as f32 * rhs) as UdimRepr).into()

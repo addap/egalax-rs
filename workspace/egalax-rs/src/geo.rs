@@ -48,7 +48,7 @@ impl fmt::Display for Point2D {
 /// Generic From instance to convert various things into [`Point2D`].
 impl<T: Into<dimX> + Into<dimY>> From<(T, T)> for Point2D {
     fn from((x, y): (T, T)) -> Self {
-        Point2D {
+        Self {
             x: x.into(),
             y: y.into(),
         }
@@ -57,7 +57,7 @@ impl<T: Into<dimX> + Into<dimY>> From<(T, T)> for Point2D {
 
 /// A range of values between a minimum and maximum.
 /// The fields are private to uphold the invariant that min <= max.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Range<D: Dim> {
     min: udim<D>,
     max: udim<D>,
@@ -143,7 +143,7 @@ pub struct AABB {
 impl AABB {
     /// Create a new AABB given the coordinates of the endpoints.
     pub fn new(x1: dimX, y1: dimY, x2: dimX, y2: dimY) -> Self {
-        AABB {
+        Self {
             x1: min(x1, x2),
             y1: min(y1, y2),
             x2: max(x1, x2),
@@ -153,13 +153,13 @@ impl AABB {
 
     /// Create a new AABB from the upper-left corner and a width & height.
     pub fn new_wh(x: dimX, y: dimY, width: dimX, height: dimY) -> Self {
-        AABB::new(x, y, x + width, y + height)
+        Self::new(x, y, x + width, y + height)
     }
 
     /// Combines two AABBs by creating the smallest AABB that contains both.
     #[must_use]
     pub fn union(self, rhs: Self) -> Self {
-        AABB {
+        Self {
             x1: min(self.x1, rhs.x1),
             y1: min(self.y1, rhs.y1),
             x2: max(self.x2, rhs.x2),
@@ -170,7 +170,7 @@ impl AABB {
     /// Grows the AABB so that it also contains point.
     #[must_use]
     pub fn grow_to_point(self, point: &Point2D) -> Self {
-        AABB {
+        Self {
             x1: min(self.x1, point.x),
             y1: min(self.y1, point.y),
             x2: max(self.x2, point.x),
@@ -181,7 +181,7 @@ impl AABB {
     /// Shift x1, x2 by x and y1, y2 by y
     #[must_use]
     pub fn translate(self, x: dimX, y: dimY) -> Self {
-        AABB::new(self.x1 + x, self.y1 + y, self.x2 + x, self.y2 + y)
+        Self::new(self.x1 + x, self.y1 + y, self.x2 + x, self.y2 + y)
     }
 
     /// Returns the AABB's range in the X dimension.
@@ -244,6 +244,6 @@ impl fmt::Display for AABB {
 /// Generic From instance to convert various things into AABBs.
 impl<T: Into<dimX> + Into<dimY>> From<(T, T, T, T)> for AABB {
     fn from((x1, y1, x2, y2): (T, T, T, T)) -> Self {
-        AABB::new(x1.into(), y1.into(), x2.into(), y2.into())
+        Self::new(x1.into(), y1.into(), x2.into(), y2.into())
     }
 }
