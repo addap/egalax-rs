@@ -31,7 +31,7 @@ impl Dim for Y {}
 /// Integer type of a screen dimension
 pub type UdimRepr = i32;
 
-/// Wrapper which uses PhantomData to statically tell apart numbers of different dimensions.
+/// Wrapper which uses [`PhantomData`] to statically tell apart numbers of different dimensions.
 #[allow(non_camel_case_types)]
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -64,7 +64,7 @@ impl<D: Dim> fmt::Display for udim<D> {
 }
 
 /// Generic From instance to convert scalar values into udim<D>.
-/// We use this mainly for UdimRepr and smaller types such as i16.
+/// We use this mainly for [`UdimRepr`] and smaller types such as i16.
 impl<D: Dim, T: Into<UdimRepr>> From<T> for udim<D> {
     fn from(x: T) -> Self {
         udim(PhantomData, x.into())

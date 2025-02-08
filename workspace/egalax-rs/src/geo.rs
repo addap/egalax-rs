@@ -1,4 +1,5 @@
 //! Representation of screen geometry.
+#![allow(clippy::cast_precision_loss, clippy::wildcard_imports)]
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -44,7 +45,7 @@ impl fmt::Display for Point2D {
     }
 }
 
-/// Generic From instance to convert various things into Point2Ds.
+/// Generic From instance to convert various things into [`Point2D`].
 impl<T: Into<dimX> + Into<dimY>> From<(T, T)> for Point2D {
     fn from((x, y): (T, T)) -> Self {
         Point2D {
@@ -98,8 +99,7 @@ impl<D: Dim> Range<D> {
         if self.max == self.min {
             0.0
         } else {
-            let t = (x - self.min).float() / (self.max - self.min).float();
-            t
+            (x - self.min).float() / (self.max - self.min).float()
         }
     }
 
@@ -157,6 +157,7 @@ impl AABB {
     }
 
     /// Combines two AABBs by creating the smallest AABB that contains both.
+    #[must_use]
     pub fn union(self, rhs: Self) -> Self {
         AABB {
             x1: min(self.x1, rhs.x1),
@@ -167,6 +168,7 @@ impl AABB {
     }
 
     /// Grows the AABB so that it also contains point.
+    #[must_use]
     pub fn grow_to_point(self, point: &Point2D) -> Self {
         AABB {
             x1: min(self.x1, point.x),
@@ -177,6 +179,7 @@ impl AABB {
     }
 
     /// Shift x1, x2 by x and y1, y2 by y
+    #[must_use]
     pub fn translate(self, x: dimX, y: dimY) -> Self {
         AABB::new(self.x1 + x, self.y1 + y, self.x2 + x, self.y2 + y)
     }

@@ -10,8 +10,6 @@ use crate::units::DimE;
 pub enum EgalaxError {
     #[error("Device Error")]
     Device,
-    #[error("Monitor \"{0}\" not found")]
-    MonitorNotFound(String),
     #[error("{0}")]
     Time(#[from] time::SystemTimeError),
     #[error("{0}")]

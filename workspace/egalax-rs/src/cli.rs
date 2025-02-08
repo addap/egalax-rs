@@ -42,7 +42,7 @@ impl fmt::Display for ProgramArgs {
 
 /// Print CLI usage and then exit with an error.
 fn exit_usage() -> ! {
-    let program = std::env::args().nth(0).unwrap_or(String::from("<unknown>"));
+    let program = std::env::args().next().unwrap_or(String::from("<unknown>"));
     let usage = format!("Usage: {} [--dev FILE] [--config FILE]", program);
     eprintln!("{}", usage);
     exit(1)
@@ -61,7 +61,7 @@ impl ProgramArgs {
     /// Exits the program if program arguments cannot be parsed correctly.
     pub fn get() -> ProgramArgs {
         // Get command line arguments, skipping the program name.
-        let mut args = std::env::args().into_iter().skip(1);
+        let mut args = std::env::args().skip(1);
         let mut device: Option<PathBuf> = None;
         let mut config: Option<PathBuf> = None;
 
@@ -119,6 +119,7 @@ impl ProgramArgs {
         }
     }
 
+    /// Opens the files given in the program arguments
     pub fn acquire_resources(self) -> Result<ProgramResources, EgalaxError> {
         log::trace!("Entering CLI::get_resources.");
         log::info!("Trying to acquire program resources.");

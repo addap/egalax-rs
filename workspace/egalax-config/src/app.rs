@@ -7,10 +7,7 @@ use egui::{vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder, Vi
 use std::{fs::OpenOptions, mem, path::PathBuf};
 
 use calibrate::Calibrator;
-use egalax_rs::{
-    config::{self, Config},
-    geo::AABB,
-};
+use egalax_rs::{config::Config, geo::AABB};
 use evdev_events::EV_KEYS;
 
 const FOOTER_STYLE: &str = "footer";
@@ -66,7 +63,7 @@ impl App {
         cc.egui_ctx
             .options_mut(|options| options.fallback_theme = Theme::Light);
 
-        let current_config = original_config.clone();
+        let current_config = original_config;
         let input = Input::new(&original_config);
         let static_data = StaticData {
             quit_save_msg: format!("Quit & save to \"{}\"", config_path.display()),
@@ -108,7 +105,7 @@ impl App {
         } else if ctx.input(|i| i.key_pressed(Key::C)) {
             self.start_calibration(ctx);
         } else if ctx.input(|i| i.key_pressed(Key::R)) {
-            self.current_config = self.original_config.clone();
+            self.current_config = self.original_config;
         }
     }
 
@@ -186,7 +183,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(format!(
                         "Has-Moved Threshold ({}): ",
-                        self.current_config.has_moved_threshold.to_string()
+                        self.current_config.has_moved_threshold
                     ));
                     if ui.text_edit_singleline(&mut self.input.has_moved).changed() {
                         match self.input.has_moved.parse::<f32>() {
@@ -198,7 +195,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(format!(
                         "Right-Click Wait Time ({}): ",
-                        self.current_config.right_click_wait_ms.to_string()
+                        self.current_config.right_click_wait_ms
                     ));
                     if ui
                         .text_edit_singleline(&mut self.input.right_click_wait)

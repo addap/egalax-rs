@@ -176,7 +176,7 @@ struct TouchCloud {
 impl TouchCloud {
     /// Compute the smallest bounding box that contains all points and then return its midpoint.
     fn compute_touch_coord(&mut self) -> Point2D {
-        assert!(self.v.len() >= 1);
+        assert!(!self.v.is_empty());
 
         let mut abox = AABB::new_wh(self.v[0].x, self.v[0].y, 0.into(), 0.into());
 
@@ -439,10 +439,12 @@ fn packet_reader(
     let device_node = OpenOptions::new()
         .read(true)
         .open(&device_path)
-        .expect(&format!(
-            "Opening `{:?}` failed. USB cable to monitor disconnected?",
-            device_path,
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Opening `{:?}` failed. USB cable to monitor disconnected?",
+                device_path
+            )
+        });
     log::info!("Opened device node `{:?}`", device_path);
 
     fn read_packets(

@@ -10,6 +10,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut f = OpenOptions::new()
         .write(true)
         .create(true)
+        .truncate(true)
         .open("./config.gen.toml")?;
     f.write_all(s.as_bytes())?;
     Ok(())

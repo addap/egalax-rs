@@ -10,7 +10,10 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     let hidraw = fs::read(HIDRAW_FILE).expect("Cannot read hidraw file");
     let mut stream = Cursor::new(hidraw);
 
-    let process_packet = |packet| Ok(println!("{}", packet));
+    let process_packet = |packet| {
+        println!("{}", packet);
+        Ok(())
+    };
     process_packets(&mut stream, process_packet)?;
     Ok(())
 }

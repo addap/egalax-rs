@@ -100,7 +100,7 @@ impl EventGen {
             &self.time,
             &EventCode::EV_SYN(EV_SYN::SYN_REPORT),
             0,
-        ))
+        ));
     }
 
     fn finish(mut self) -> Vec<InputEvent> {
@@ -190,15 +190,15 @@ impl Driver {
         events.finish()
     }
 
-    /// Setup the virtual device with uinput
-    /// Customized from https://github.com/ndesh26/evdev-rs/blob/master/examples/vmouse.rs
+    /// Setup the virtual device with uinput.
+    /// Customized from <https://github.com/ndesh26/evdev-rs/blob/master/examples/vmouse.rs>
     fn get_virtual_device(&self) -> Result<UInputDevice, EgalaxError> {
         log::trace!("Entering Driver::get_virtual_device.");
 
         let u = UninitDevice::new().ok_or(EgalaxError::Device)?;
 
         // Setup device
-        // per: https://01.org/linuxgraphics/gfx-docs/drm/input/uinput.html#mouse-movements
+        // as per: https://01.org/linuxgraphics/gfx-docs/drm/input/uinput.html#mouse-movements
 
         log::info!("Set basic properties of virtual device.");
         u.set_name("Egalax Virtual Mouse");
@@ -261,18 +261,18 @@ impl Driver {
         log::trace!("Leaving Driver::get_virtual_device.");
         Ok(vm)
     }
+}
 
-    /// Send the generated events to the uinput virtual device.
-    fn send_events(&self, vm: &UInputDevice, events: &[InputEvent]) -> Result<(), EgalaxError> {
-        log::trace!("Entering Driver::send_events.");
+/// Send the generated events to the uinput virtual device.
+fn send_events(vm: &UInputDevice, events: &[InputEvent]) -> Result<(), EgalaxError> {
+    log::trace!("Entering driver::send_events.");
 
-        for event in events {
-            vm.write_event(event)?;
-        }
-
-        log::trace!("Leaving Driver::send_events.");
-        Ok(())
+    for event in events {
+        vm.write_event(event)?;
     }
+
+    log::trace!("Leaving driver::send_events.");
+    Ok(())
 }
 
 /// Call a function on all packets in the given stream
@@ -314,7 +314,7 @@ where
 
     let process_packet = |message| {
         let events = driver.update(message);
-        driver.send_events(&vm, &events)
+        send_events(&vm, &events)
     };
     process_packets(stream, process_packet)?;
 

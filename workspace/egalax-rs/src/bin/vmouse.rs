@@ -12,7 +12,7 @@ fn main() -> Result<(), std::io::Error> {
     let mut args = std::env::args();
 
     if args.len() != 2 {
-        let n = args.nth(0).unwrap();
+        let n = args.next().unwrap();
         println!("Usage: `{} DEVICE`, eg. `{} /dev/input/event13`", n, n);
         std::process::exit(1);
     }

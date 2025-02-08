@@ -70,6 +70,10 @@ impl USBPacket {
         packet: RawPacket,
         expected_tag: Option<PacketTag>,
     ) -> Result<Self, ParsePacketError> {
+        // Bitmasks for fields in the raw packet.
+        const TOUCH_STATE_MASK: u8 = 0x01;
+        const RESOLUTION_MASK: u8 = 0x06;
+
         log::trace!("Entering Packet::try_parse.");
 
         if let Some(expected_tag) = expected_tag {
@@ -78,10 +82,6 @@ impl USBPacket {
                 return Err(ParsePacketError::UnexpectedTag(raw_tag));
             }
         }
-
-        // Bitmasks for fields in the raw packet.
-        pub const TOUCH_STATE_MASK: u8 = 0x01;
-        pub const RESOLUTION_MASK: u8 = 0x06;
 
         let resolution = match packet.0[1] & RESOLUTION_MASK {
             0x00 => 11,
@@ -98,8 +98,8 @@ impl USBPacket {
         };
 
         // X and Y coordinates are stored little-endian.
-        let y = ((packet.0[3] as u16) << 8) | (packet.0[2] as u16);
-        let x = ((packet.0[5] as u16) << 8) | (packet.0[4] as u16);
+        let y = (u16::from(packet.0[3]) << 8) | u16::from(packet.0[2]);
+        let x = (u16::from(packet.0[5]) << 8) | u16::from(packet.0[4]);
 
         if y >> resolution != 0x00 {
             return Err(ParsePacketError::WrongResolution(DimE::Y));
