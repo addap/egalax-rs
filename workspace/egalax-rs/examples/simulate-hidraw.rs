@@ -1,4 +1,4 @@
-use egalax_rs::{config::SerializedConfig, driver::virtual_mouse};
+use egalax_rs::{config::Config, driver::virtual_mouse};
 use nix::{sys::stat, unistd::mkfifo};
 use std::{
     error,
@@ -11,7 +11,7 @@ use std::{
 };
 use tempdir::TempDir;
 
-const HIDRAW_FILE: &str = "./dumps/hidraw.bin";
+const HIDRAW_FILE: &str = "../../logs/hidraw.bin";
 
 fn virtual_sender(data: Vec<u8>, path: PathBuf) {
     // let mut writer = OpenOptions::new().write(true).open(&path).unwrap();
@@ -55,7 +55,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     thread::spawn(move || virtual_sender(hidraw, path1));
     let mut reader = OpenOptions::new().read(true).open(&path).unwrap();
-    let monitor_cfg = SerializedConfig::default().build()?;
+    let monitor_cfg = Config::default();
     println!("setup complete");
 
     virtual_mouse(&mut reader, monitor_cfg)?;

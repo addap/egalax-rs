@@ -1,72 +1,14 @@
 use evdev_rs::enums::EV_KEY;
 use serde::{Deserialize, Serialize};
 use std::{fmt, fs::File, io::Read, io::Write, time::Duration};
-use xrandr::Monitor;
 
 use crate::{error::EgalaxError, geo::AABB};
-
-/// Parameters needed to translate the touch event coordinates coming from the monitor to coordinates in X's screen space.
-///
-/// X has a virtual total screen space consisting of all connected displays. We have to move the mouse using absolute coordinates in this screen space.
-/// Therefore, to compute the physical touch coordinates we need to know the calibration points of the touchscreen.
-/// And to translate the phsyical touch coordinates into screen space coordinates we need to know the monitor area within the total screen space.
-///
-/// physical            screen space
-/// +-----+             +-----+----+ (upper right area exists in virtual screen space
-/// |  A  | +----+      |  A  +----+   but cursor cannot move there.)
-/// |     | | B  | ---> |     | B  |
-/// +-----+ +----+      +-----+----+
-///    |      |
-///   _+_    _+_
-#[derive(Debug, Clone, Copy)]
-pub struct Config {
-    /// Total virtual screen space in pixels. the union of all screen spaces of connected displays.
-    pub screen_space: AABB,
-    /// Screen space of the target monitor in absolute pixels.
-    pub monitor_area: AABB,
-    /// Common config options.
-    common: ConfigCommon,
-}
-
-impl Config {
-    pub fn calibration_points(&self) -> AABB {
-        self.common.calibration_points
-    }
-
-    pub fn right_click_wait(&self) -> Duration {
-        self.common.right_click_wait()
-    }
-
-    pub fn has_moved_threshold(&self) -> f32 {
-        self.common.has_moved_threshold
-    }
-
-    pub fn ev_left_click(&self) -> EV_KEY {
-        self.common.ev_left_click
-    }
-
-    pub fn ev_right_click(&self) -> EV_KEY {
-        self.common.ev_right_click
-    }
-}
-
-impl fmt::Display for Config {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // a.d. Note that the backslash in a string literal escapes both the line break and the leasing whitespace of the next line.
-        write!(
-            f,
-            "Total virtual screen space: {}.\n\
-            Monitor area within screen space: {}.\n\
-            {}",
-            self.screen_space, self.monitor_area, self.common
-        )
-    }
-}
 
 // a.d. TODO use configparser instead of serde.
 /// Common config options that are taken verbatim from the config file.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ConfigCommon {
+pub struct Config {
+    // a.d. TODO make optional
     /// The coordinates of the calibration points in the coordinate system of the touch screen (appears to be physically in units of 0.1mm).
     pub calibration_points: AABB,
     /// How long you have to keep pressing to trigger a right-click.
@@ -79,13 +21,29 @@ pub struct ConfigCommon {
     pub ev_right_click: EV_KEY,
 }
 
-impl ConfigCommon {
+impl Config {
+    pub fn calibration_points(&self) -> AABB {
+        self.calibration_points
+    }
+
     pub fn right_click_wait(&self) -> Duration {
         Duration::from_millis(self.right_click_wait_ms)
     }
+
+    pub fn has_moved_threshold(&self) -> f32 {
+        self.has_moved_threshold
+    }
+
+    pub fn ev_left_click(&self) -> EV_KEY {
+        self.ev_left_click
+    }
+
+    pub fn ev_right_click(&self) -> EV_KEY {
+        self.ev_right_click
+    }
 }
 
-impl Default for ConfigCommon {
+impl Default for Config {
     fn default() -> Self {
         Self {
             calibration_points: AABB::from((300, 300, 3800, 3800)),
@@ -97,8 +55,9 @@ impl Default for ConfigCommon {
     }
 }
 
-impl fmt::Display for ConfigCommon {
+impl fmt::Display for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // a.d. Note that the backslash in a string literal escapes both the line break and the leasing whitespace of the next line.
         write!(
             f,
             "Calibration points of touchscreen: {}.\n\
@@ -111,117 +70,27 @@ impl fmt::Display for ConfigCommon {
     }
 }
 
-/// Representation of config file which can be used to build a [MonitorConfig]
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SerializedConfig {
-    /// Name of the xrandr output of the monitor on which touch events will be interpreted.
-    pub monitor_designator: MonitorDesignator,
-    /// Common config options.
-    pub common: ConfigCommon,
-}
-
-impl SerializedConfig {
-    pub fn new(monitor_designator: MonitorDesignator, common: ConfigCommon) -> Self {
-        Self {
-            monitor_designator,
-            common,
-        }
-    }
-
+impl Config {
     /// Load config from file.
     pub fn from_file(f: &mut File) -> Result<Self, EgalaxError> {
-        log::trace!("Entering ConfigFile::from_file.");
+        log::trace!("Entering Config::from_file.");
 
         let mut config_file = String::new();
         f.read_to_string(&mut config_file)?;
-        let config_file = toml::from_str(&config_file)?;
+        let config = toml::from_str(&config_file)?;
 
-        log::trace!("Leaving ConfigFile::from_file.");
-        Ok(config_file)
+        log::trace!("Leaving Config::from_file.");
+        Ok(config)
     }
 
     /// Save config to file.
     pub fn save_file(&self, f: &mut File) -> Result<(), EgalaxError> {
-        log::trace!("Entering ConfigFile::save_file");
+        log::trace!("Entering Config::save_file");
 
         let config_file = toml::to_string_pretty(&self)?;
         f.write_all(config_file.as_bytes())?;
 
-        log::trace!("Leaving ConfigFile::save_file");
+        log::trace!("Leaving Config::save_file");
         Ok(())
-    }
-
-    /// Query info from Xrandr to build a [MonitorConfig].
-    pub fn build(self) -> Result<Config, EgalaxError> {
-        log::trace!("Entering MonitorConfigBuilder::build");
-
-        let monitors = xrandr::XHandle::open()?.monitors()?;
-        let screen_space = self.compute_screen_space(&monitors);
-        let monitor_area = self.get_monitor_area(&monitors)?;
-
-        let config = Config {
-            screen_space: screen_space,
-            monitor_area: monitor_area,
-            common: self.common,
-        };
-        log::trace!("Leaving MonitorConfigBuilder::build");
-        Ok(config)
-    }
-
-    /// Union screen spaces of all monitors to get total screen space used by X.
-    fn compute_screen_space(&self, monitors: &[Monitor]) -> AABB {
-        monitors
-            .iter()
-            .map(AABB::from)
-            .fold(AABB::default(), AABB::union)
-    }
-
-    /// Get only the screen space of the touchscreen monitor.
-    fn get_monitor_area(&self, monitors: &[Monitor]) -> Result<AABB, EgalaxError> {
-        let monitor = match &self.monitor_designator {
-            MonitorDesignator::Primary => monitors.iter().find(|monitor| monitor.is_primary),
-            MonitorDesignator::Named(monitor_name) => monitors
-                .iter()
-                .find(|monitor| monitor.name == *monitor_name),
-        }
-        .ok_or(EgalaxError::MonitorNotFound(
-            self.monitor_designator.to_string(),
-        ))?;
-
-        let area = AABB::from(monitor);
-        log::info!("Using uncalibrated monitor's total dimensions {}", area);
-        Ok(area)
-    }
-}
-
-impl fmt::Display for SerializedConfig {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Name of XRandR Output: {}.\n{}",
-            self.monitor_designator, self.common
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum MonitorDesignator {
-    Primary,
-    Named(String),
-}
-
-impl fmt::Display for MonitorDesignator {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let description = match self {
-            MonitorDesignator::Primary => "*Primary*",
-            MonitorDesignator::Named(name) => name,
-        };
-        f.write_str(&description)
-    }
-}
-
-impl Default for MonitorDesignator {
-    fn default() -> Self {
-        Self::Primary
     }
 }

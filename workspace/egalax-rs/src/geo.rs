@@ -81,6 +81,10 @@ impl<D: Dim> Range<D> {
         self.max
     }
 
+    pub fn clamp(&self, v: udim<D>) -> udim<D> {
+        min(self.max, max(self.min, v))
+    }
+
     /// Returns the length of a Range.
     pub fn length(&self) -> udim<D> {
         self.max - self.min
@@ -187,6 +191,13 @@ impl AABB {
         Range::new(self.y1, self.y2)
     }
 
+    pub fn clamp(&self, p: Point2D) -> Point2D {
+        Point2D {
+            x: self.xrange().clamp(p.x),
+            y: self.yrange().clamp(p.y),
+        }
+    }
+
     /// Returns the AABB's width.
     pub fn width(&self) -> dimX {
         self.xrange().length()
@@ -223,17 +234,6 @@ impl fmt::Display for AABB {
             f,
             "upper-left: ({}, {})\tlower-right: ({}, {})",
             self.x1, self.y1, self.x2, self.y2
-        )
-    }
-}
-
-impl From<&xrandr::Monitor> for AABB {
-    fn from(m: &xrandr::Monitor) -> Self {
-        AABB::new_wh(
-            m.x.into(),
-            m.y.into(),
-            m.width_px.into(),
-            m.height_px.into(),
         )
     }
 }

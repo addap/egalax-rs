@@ -2,8 +2,10 @@ use evdev_rs::enums::{BusType, EventCode, EventType, EV_ABS, EV_KEY, EV_SYN};
 use evdev_rs::{
     AbsInfo, DeviceWrapper, EnableCodeData, InputEvent, TimeVal, UInputDevice, UninitDevice,
 };
-use std::thread;
+use std::thread::{self, sleep};
 use std::time::Duration;
+
+const SIZE: i32 = 1 << 12;
 
 // A customization of vmouse.rs for a device with absolute axes.
 fn mkdev() -> Result<UInputDevice, std::io::Error> {
@@ -18,12 +20,12 @@ fn mkdev() -> Result<UInputDevice, std::io::Error> {
     // Note mouse keys have to be enabled for this to be detected
     // as a usable device, see: https://stackoverflow.com/a/64559658/6074942
     u.enable_event_type(&EventType::EV_KEY)?;
-    u.enable_event_code(&EventCode::EV_KEY(EV_KEY::BTN_TOUCH), None)?;
+    u.enable_event_code(&EventCode::EV_KEY(EV_KEY::BTN_LEFT), None)?;
 
     let abs_info_x: AbsInfo = AbsInfo {
         value: 0,
-        minimum: 30,
-        maximum: 4040,
+        minimum: 0,
+        maximum: SIZE,
         fuzz: 0,
         flat: 0,
         resolution: 0,
@@ -31,8 +33,8 @@ fn mkdev() -> Result<UInputDevice, std::io::Error> {
 
     let abs_info_y: AbsInfo = AbsInfo {
         value: 0,
-        minimum: 60,
-        maximum: 4035,
+        minimum: 0,
+        maximum: SIZE,
         fuzz: 0,
         flat: 0,
         resolution: 0,
@@ -52,6 +54,7 @@ fn mkdev() -> Result<UInputDevice, std::io::Error> {
 
     // Attempt to create UInputDevice from UninitDevice
     let v = UInputDevice::create_from_device(&u)?;
+    sleep(Duration::from_secs(1));
     Ok(v)
 }
 
@@ -59,11 +62,11 @@ fn main() -> Result<(), std::io::Error> {
     let v = mkdev()?;
     let zero = TimeVal::new(0, 0);
 
-    v.write_event(&InputEvent {
-        time: zero,
-        event_code: EventCode::EV_KEY(EV_KEY::BTN_TOUCH),
-        value: 1,
-    })?;
+    // v.write_event(&InputEvent {
+    //     time: zero,
+    //     event_code: EventCode::EV_KEY(EV_KEY::BTN_LEFT),
+    //     value: 1,
+    // })?;
 
     v.write_event(&InputEvent {
         time: zero,
@@ -71,18 +74,18 @@ fn main() -> Result<(), std::io::Error> {
         value: 0,
     })?;
 
-    for i in 3..12 {
+    for i in 0..=10 {
         // Write mapped event
         v.write_event(&InputEvent {
             time: zero,
             event_code: EventCode::EV_ABS(EV_ABS::ABS_X),
-            value: 30 * i,
+            value: (SIZE / 10) * i,
         })?;
 
         v.write_event(&InputEvent {
             time: zero,
             event_code: EventCode::EV_ABS(EV_ABS::ABS_Y),
-            value: 60 * i,
+            value: (SIZE / 10) * i,
         })?;
 
         v.write_event(&InputEvent {
@@ -91,14 +94,14 @@ fn main() -> Result<(), std::io::Error> {
             value: 0,
         })?;
 
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_millis(500));
     }
 
-    v.write_event(&InputEvent {
-        time: zero,
-        event_code: EventCode::EV_KEY(EV_KEY::BTN_TOUCH),
-        value: 0,
-    })?;
+    // v.write_event(&InputEvent {
+    //     time: zero,
+    //     event_code: EventCode::EV_KEY(EV_KEY::BTN_TOUCH),
+    //     value: 0,
+    // })?;
 
     v.write_event(&InputEvent {
         time: zero,

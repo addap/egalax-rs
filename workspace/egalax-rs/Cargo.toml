@@ -11,7 +11,6 @@ anyhow = { workspace = true }
 const_format = { workspace = true }
 
 evdev-rs = { workspace = true, features = [ "serde" ] }
-xrandr = { workspace = true }
 
 serde = { version = "1.0", features = [ "derive" ] }
 toml = { version = "0.8.19" }

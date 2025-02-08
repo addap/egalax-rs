@@ -17,7 +17,7 @@ use std::{path::Path, time::SystemTime};
 use super::audio::{self, Sound};
 use super::{CalibratorWindowResponse, FOOTER_STYLE};
 use egalax_rs::{
-    config::ConfigCommon,
+    config::Config,
     error::EgalaxError,
     geo::{Point2D, AABB},
     protocol::{PacketTag, RawPacket, TouchState, USBMessage, USBPacket, RAW_PACKET_LEN},
@@ -339,7 +339,7 @@ impl Calibrator {
             ui.label(format!("screen rect: {}", srect));
             ui.label(format!(
                 "default calibration points: {}",
-                ConfigCommon::default().calibration_points
+                Config::default().calibration_points
             ));
             if let CalibrationState::Finished {
                 calibration_points, ..
@@ -379,11 +379,8 @@ impl Calibrator {
             // Draw touch point decals as small hitmarkers.
             for p in self.decals.iter() {
                 // position is in monitor coordinates so we convert to egui screen coordinates.
-                let decal_default = pos2_from_calibration_points(
-                    srect,
-                    ConfigCommon::default().calibration_points,
-                    *p,
-                );
+                let decal_default =
+                    pos2_from_calibration_points(srect, Config::default().calibration_points, *p);
                 self.draw_decal_default(painter, decal_default);
 
                 if let CalibrationState::Finished {

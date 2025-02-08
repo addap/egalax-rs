@@ -79,30 +79,19 @@ impl EventGen {
     }
 
     fn add_move_position(&mut self, position: Point2D, monitor_cfg: &Config) {
-        let x_scale = monitor_cfg
-            .calibration_points()
-            .xrange()
-            .linear_factor(position.x);
-        let x_monitor = monitor_cfg.monitor_area.xrange().lerp(x_scale);
+        let position = monitor_cfg.calibration_points().clamp(position);
 
-        let y_scale = monitor_cfg
-            .calibration_points()
-            .yrange()
-            .linear_factor(position.y);
-        let y_monitor = monitor_cfg.monitor_area.yrange().lerp(y_scale);
-
-        log::info!("Moving to x {}", x_monitor.value());
-        log::info!("Moving to y {}", y_monitor.value());
+        log::info!("Moving to xy={}", position);
 
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_X),
-            x_monitor.value(),
+            position.x.value(),
         ));
         self.events.push(InputEvent::new(
             &self.time,
             &EventCode::EV_ABS(EV_ABS::ABS_Y),
-            y_monitor.value(),
+            position.y.value(),
         ));
     }
 
@@ -232,8 +221,8 @@ impl Driver {
         // that are restricted to the screen space of the designated monitor.
         let abs_info_x: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.config.screen_space.xrange().min().value(),
-            maximum: self.config.screen_space.xrange().max().value(),
+            minimum: self.config.calibration_points().xrange().min().value(),
+            maximum: self.config.calibration_points().xrange().max().value(),
             // TODO test if fuzz value works as expected. should remove spurious drags when pressing long for right-click
             fuzz: 50,
             flat: 0,
@@ -242,8 +231,8 @@ impl Driver {
 
         let abs_info_y: AbsInfo = AbsInfo {
             value: 0,
-            minimum: self.config.screen_space.yrange().min().value(),
-            maximum: self.config.screen_space.yrange().max().value(),
+            minimum: self.config.calibration_points().yrange().min().value(),
+            maximum: self.config.calibration_points().yrange().max().value(),
             fuzz: 50,
             flat: 0,
             resolution: 0,

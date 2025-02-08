@@ -18,8 +18,6 @@ pub enum EgalaxError {
     Parse(#[from] ParsePacketError),
     #[error("{0}")]
     IO(#[from] io::Error),
-    #[error("{0}")]
-    Xrandr(#[from] xrandr::XrandrError),
     #[error("Failed to parse config file:\n{0}")]
     ParseConfig(#[from] toml::de::Error),
     #[error("Failed to serialize config file:\n{0}")]

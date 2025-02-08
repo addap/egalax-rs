@@ -5,7 +5,7 @@ use thiserror::Error;
 use app::App;
 use egalax_rs::{
     cli::{ProgramArgs, ProgramResources},
-    config::SerializedConfig,
+    config::Config,
 };
 
 /// Combination of errors from our driver of the GUI framework.
@@ -31,33 +31,16 @@ fn main() -> Result<(), Error> {
     log::info!("Tested opening device node.");
     drop(device);
 
-    let serialized_config = SerializedConfig::from_file(&mut config).unwrap_or_else(|e| {
+    let config = Config::from_file(&mut config).unwrap_or_else(|e| {
         log::warn!("Failed to open config file, using default.\n{}", e);
         Default::default()
     });
-    log::info!("Using monitor config:\n{}", serialized_config);
-    drop(config);
-
-    let monitors = xrandr::XHandle::open()
-        .expect("Failed to open connection to X server.")
-        .monitors()
-        .expect("Failed to enumerate monitors from X server.")
-        .into_iter()
-        .map(|m| m.name)
-        .collect();
+    log::info!("Using monitor config:\n{}", config);
 
     eframe::run_native(
         "egalax settings editor",
         eframe::NativeOptions::default(),
-        Box::new(|cc| {
-            Ok(Box::new(App::new(
-                device_path,
-                config_path,
-                serialized_config,
-                monitors,
-                cc,
-            )))
-        }),
+        Box::new(|cc| Ok(Box::new(App::new(device_path, config_path, config, cc)))),
     )?;
     Ok(())
 }

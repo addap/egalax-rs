@@ -8,7 +8,7 @@ use std::{fs::OpenOptions, mem, path::PathBuf};
 
 use calibrate::Calibrator;
 use egalax_rs::{
-    config::{self, SerializedConfig},
+    config::{self, Config},
     geo::AABB,
 };
 use evdev_events::EV_KEYS;
@@ -22,10 +22,10 @@ struct Input {
 }
 
 impl Input {
-    fn new(config_file: &SerializedConfig) -> Self {
+    fn new(config: &Config) -> Self {
         Self {
-            has_moved: config_file.common.has_moved_threshold.to_string(),
-            right_click_wait: config_file.common.right_click_wait_ms.to_string(),
+            has_moved: config.has_moved_threshold.to_string(),
+            right_click_wait: config.right_click_wait_ms.to_string(),
         }
     }
 }
@@ -45,10 +45,9 @@ enum CalibratorWindowResponse {
 }
 
 pub struct App {
-    current_config: SerializedConfig,
-    original_config: SerializedConfig,
+    current_config: Config,
+    original_config: Config,
     input: Input,
-    monitors: Vec<String>,
     device_path: PathBuf,
     config_path: PathBuf,
     calibrator_window: CalibratorWindowState,
@@ -61,8 +60,7 @@ impl App {
     pub fn new(
         device_path: PathBuf,
         config_path: PathBuf,
-        original_config: SerializedConfig,
-        monitors: Vec<String>,
+        original_config: Config,
         cc: &eframe::CreationContext<'_>,
     ) -> Self {
         cc.egui_ctx
@@ -81,7 +79,6 @@ impl App {
             current_config,
             original_config,
             input,
-            monitors,
             device_path,
             config_path,
             calibrator_window: CalibratorWindowState::Deactivated,
@@ -153,35 +150,16 @@ impl App {
             ui.vertical(|ui| {
                 ui.add_space(srect.lerp_inside(vec2(0.0, CONTENT_OFFSET)).y);
                 ui.horizontal(|ui| {
-                    ui.label("Monitors: ");
-                    egui::ComboBox::from_id_salt(0)
-                        .selected_text(self.current_config.monitor_designator.to_string())
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.current_config.monitor_designator,
-                                config::MonitorDesignator::Primary,
-                                config::MonitorDesignator::Primary.to_string(),
-                            );
-                            for monitor in self.monitors.iter() {
-                                ui.selectable_value(
-                                    &mut self.current_config.monitor_designator,
-                                    config::MonitorDesignator::Named(monitor.clone()),
-                                    monitor,
-                                );
-                            }
-                        });
-                });
-                ui.horizontal(|ui| {
                     ui.label(format!(
                         "Left-Click Event ({:?}): ",
-                        self.current_config.common.ev_left_click
+                        self.current_config.ev_left_click
                     ));
                     egui::ComboBox::from_id_salt(1)
-                        .selected_text(format!("{:?}", self.current_config.common.ev_left_click))
+                        .selected_text(format!("{:?}", self.current_config.ev_left_click))
                         .show_ui(ui, |ui| {
                             for ev_key in EV_KEYS {
                                 ui.selectable_value(
-                                    &mut self.current_config.common.ev_left_click,
+                                    &mut self.current_config.ev_left_click,
                                     ev_key,
                                     format!("{:?}", ev_key),
                                 );
@@ -191,14 +169,14 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(format!(
                         "Right-Click Event ({:?}): ",
-                        self.current_config.common.ev_right_click
+                        self.current_config.ev_right_click
                     ));
                     egui::ComboBox::from_id_salt(2)
-                        .selected_text(format!("{:?}", self.current_config.common.ev_right_click))
+                        .selected_text(format!("{:?}", self.current_config.ev_right_click))
                         .show_ui(ui, |ui| {
                             for ev_key in EV_KEYS {
                                 ui.selectable_value(
-                                    &mut self.current_config.common.ev_right_click,
+                                    &mut self.current_config.ev_right_click,
                                     ev_key,
                                     format!("{:?}", ev_key),
                                 );
@@ -208,11 +186,11 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(format!(
                         "Has-Moved Threshold ({}): ",
-                        self.current_config.common.has_moved_threshold.to_string()
+                        self.current_config.has_moved_threshold.to_string()
                     ));
                     if ui.text_edit_singleline(&mut self.input.has_moved).changed() {
                         match self.input.has_moved.parse::<f32>() {
-                            Ok(f) => self.current_config.common.has_moved_threshold = f,
+                            Ok(f) => self.current_config.has_moved_threshold = f,
                             Err(e) => eprintln!("Has-moved threshold parse error: {e}"),
                         }
                     }
@@ -220,14 +198,14 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(format!(
                         "Right-Click Wait Time ({}): ",
-                        self.current_config.common.right_click_wait_ms.to_string()
+                        self.current_config.right_click_wait_ms.to_string()
                     ));
                     if ui
                         .text_edit_singleline(&mut self.input.right_click_wait)
                         .changed()
                     {
                         match self.input.has_moved.parse::<u64>() {
-                            Ok(ms) => self.current_config.common.right_click_wait_ms = ms,
+                            Ok(ms) => self.current_config.right_click_wait_ms = ms,
                             Err(e) => eprintln!("Right-click wait time parse error: {e}"),
                         }
                     }
@@ -236,7 +214,7 @@ impl App {
                     ui.label("Calibration Points: ");
                     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GRAY;
                     if ui
-                        .button(self.current_config.common.calibration_points.to_string())
+                        .button(self.current_config.calibration_points.to_string())
                         .clicked()
                     {
                         self.start_calibration(ctx);
@@ -303,7 +281,7 @@ impl eframe::App for App {
                         match result {
                             None => {}
                             Some(calibration_points) => {
-                                self.current_config.common.calibration_points = calibration_points;
+                                self.current_config.calibration_points = calibration_points;
                             }
                         }
                         calibrator.exit();
