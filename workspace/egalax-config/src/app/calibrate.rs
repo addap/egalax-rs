@@ -5,10 +5,9 @@ use evdev_rs::TimeVal;
 use nix::poll::{self, PollFd, PollFlags, PollTimeout};
 use std::{
     collections::VecDeque,
-    fs::{File, OpenOptions},
+    fs::File,
     io::Read,
     os::fd::AsFd,
-    path::PathBuf,
     thread::{self, JoinHandle},
 };
 use std::{path::Path, time::SystemTime};
@@ -111,21 +110,22 @@ impl OngoingState {
                 // Unfolding the definition and solving for min & max gives us
                 // min = x0 * (1 - OFFSET)/(1 - 2 * OFFSET) - x1 * OFFSET/(1 - 2 * OFFSET)
                 // max = x0 + x1 - min
-                fn cmin<T: Dim>(t0: udim<T>, t1: udim<T>) -> udim<T> {
-                    const H: f32 = 1.0 - CIRCLE_OFFSET - CIRCLE_OFFSET;
-                    t0 * ((1.0 - CIRCLE_OFFSET) / H) - t1 * (CIRCLE_OFFSET / H)
-                }
-                fn cmax<T: Dim>(t0: udim<T>, t1: udim<T>, min: udim<T>) -> udim<T> {
-                    t0 + t1 - min
-                }
+                let calibration_points = {
+                    fn cmin<T: Dim>(t0: udim<T>, t1: udim<T>) -> udim<T> {
+                        const H: f32 = 1.0 - CIRCLE_OFFSET - CIRCLE_OFFSET;
+                        t0 * ((1.0 - CIRCLE_OFFSET) / H) - t1 * (CIRCLE_OFFSET / H)
+                    }
+                    fn cmax<T: Dim>(t0: udim<T>, t1: udim<T>, min: udim<T>) -> udim<T> {
+                        t0 + t1 - min
+                    }
 
-                let xmin = cmin(x0, x1);
-                let xmax = cmax(x0, x1, xmin);
-                let ymin = cmin(y0, y1);
-                let ymax = cmax(y0, y1, ymin);
+                    let xmin = cmin(x0, x1);
+                    let xmax = cmax(x0, x1, xmin);
+                    let ymin = cmin(y0, y1);
+                    let ymax = cmax(y0, y1, ymin);
 
-                let calibration_points = AABB::new(xmin, ymin, xmax, ymax);
-
+                    AABB::new(xmin, ymin, xmax, ymax)
+                };
                 CalibrationState::Finished { calibration_points }
             }
         }
@@ -214,7 +214,7 @@ impl Calibrator {
         let reader_handle = thread::spawn({
             let ctx = ctx.clone();
             let device_path = device_path.to_path_buf();
-            move || packet_reader(device_path, tx_packet, rx_exit, ctx)
+            move || packet_reader(&device_path, tx_packet, rx_exit, &ctx)
         });
 
         Self {
@@ -395,6 +395,7 @@ impl Calibrator {
         });
     }
 
+    #[allow(clippy::unused_self)]
     fn draw_decal_default(&self, painter: &Painter, decal_pos: Pos2) {
         let d: f32 = 5.0;
         let decal_stroke = Stroke::new(1.0, Color32::BLACK);
@@ -408,6 +409,7 @@ impl Calibrator {
         );
     }
 
+    #[allow(clippy::unused_self)]
     fn draw_decal_calibrated(&self, painter: &Painter, decal_pos: Pos2) {
         let d: f32 = 5.0;
         let decal_stroke = Stroke::new(1.0, Color32::RED);
@@ -429,29 +431,26 @@ fn pos2_from_calibration_points(srect: Rect, calibration_points: AABB, position:
     srect.lerp_inside(vec2(x_scale, y_scale))
 }
 
-/// Infinite loop of reading from the device node with a timeout and checking the rx_exit receiver for a stop signal.
+/// Infinite loop of reading from the device node with a timeout and checking the `rx_exit` receiver for a stop signal.
 fn packet_reader(
-    device_path: PathBuf,
+    device_path: &Path,
     tx_packet: async_channel::Sender<USBMessage>,
     rx_exit: async_channel::Receiver<()>,
-    ctx: egui::Context,
+    ctx: &egui::Context,
 ) {
-    let device_node = OpenOptions::new()
-        .read(true)
-        .open(&device_path)
-        .unwrap_or_else(|_| {
-            panic!(
-                "Opening `{:?}` failed. USB cable to monitor disconnected?",
-                device_path
-            )
-        });
+    let device_node = File::open(device_path).unwrap_or_else(|_| {
+        panic!(
+            "Opening `{:?}` failed. USB cable to monitor disconnected?",
+            device_path
+        )
+    });
     log::info!("Opened device node `{:?}`", device_path);
 
     fn read_packets(
         mut device_node: File,
         tx_packet: async_channel::Sender<USBMessage>,
         rx_exit: async_channel::Receiver<()>,
-        ctx: egui::Context,
+        ctx: &egui::Context,
     ) -> Result<(), EgalaxError> {
         log::trace!("Entering read_packets.");
 

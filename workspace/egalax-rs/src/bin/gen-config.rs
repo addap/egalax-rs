@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, io::Write};
+use std::{fs::File, io::Write};
 
 use egalax_rs::config::Config;
 
@@ -7,11 +7,7 @@ fn main() -> Result<(), anyhow::Error> {
     let cf = Config::default();
     println!("{:#?}", cf);
     let s = toml::to_string(&cf)?;
-    let mut f = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open("./config.gen.toml")?;
+    let mut f = File::create("./config.gen.toml")?;
     f.write_all(s.as_bytes())?;
     Ok(())
 }

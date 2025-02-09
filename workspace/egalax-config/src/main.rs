@@ -1,12 +1,19 @@
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::must_use_candidate,
+    clippy::uninlined_format_args,
+    clippy::missing_errors_doc,
+    clippy::explicit_iter_loop
+)]
+
 mod app;
+
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
 use app::App;
-use egalax_rs::{
-    cli::{ProgramArgs, ProgramResources},
-    config::Config,
-};
+use egalax_rs::cli::{ProgramArgs, ProgramResources, CONFIG_NAME};
 
 /// Combination of errors from our driver of the GUI framework.
 #[derive(Debug, Error)]
@@ -24,18 +31,14 @@ fn main() -> Result<(), Error> {
     log::info!("Using arguments:\n{}", args);
 
     let device_path = args.device().to_path_buf();
-    let config_path = args.config().to_path_buf();
+    let config_path = args
+        .config()
+        .map_or_else(|| PathBuf::from(CONFIG_NAME), Path::to_path_buf);
     // a.d. TODO can we change it to keep both files open? iirc I tried it but when I tried to save the config I received a "bad file descriptor" error.
-    let ProgramResources { device, mut config } = args.acquire_resources()?;
+    let ProgramResources { device, config } = args.acquire_resources()?;
 
     log::info!("Tested opening device node.");
     drop(device);
-
-    let config = Config::from_file(&mut config).unwrap_or_else(|e| {
-        log::warn!("Failed to open config file, using default.\n{}", e);
-        Default::default()
-    });
-    log::info!("Using monitor config:\n{}", config);
 
     eframe::run_native(
         "egalax settings editor",

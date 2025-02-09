@@ -4,7 +4,7 @@ mod calibrate;
 mod evdev_events;
 
 use egui::{vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder, ViewportClass};
-use std::{fs::OpenOptions, mem, path::PathBuf};
+use std::{fs::File, mem, path::PathBuf};
 
 use calibrate::Calibrator;
 use egalax_rs::{config::Config, geo::AABB};
@@ -93,10 +93,7 @@ impl App {
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else if ctx.input(|i| i.key_pressed(Key::Enter)) {
-            let mut config_file = OpenOptions::new()
-                .write(true)
-                .open(&self.config_path)
-                .expect("TODO unable to open config file");
+            let mut config_file = File::create(&self.config_path).expect("Unable to open file");
             if let Err(e) = self.current_config.save_file(&mut config_file) {
                 // a.d. TODO improve error handling.
                 eprintln!("{}", e);
@@ -109,6 +106,7 @@ impl App {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn draw(&mut self, ctx: &egui::Context) {
         let srect = ctx.screen_rect();
         ctx.style_mut(|style| {
@@ -201,7 +199,7 @@ impl App {
                         .text_edit_singleline(&mut self.input.right_click_wait)
                         .changed()
                     {
-                        match self.input.has_moved.parse::<u64>() {
+                        match self.input.right_click_wait.parse::<u64>() {
                             Ok(ms) => self.current_config.right_click_wait_ms = ms,
                             Err(e) => eprintln!("Right-click wait time parse error: {e}"),
                         }
@@ -230,10 +228,10 @@ impl App {
         );
         match self.calibrator_window {
             CalibratorWindowState::Deactivated => {
-                self.calibrator_window = CalibratorWindowState::Running(calibrator)
+                self.calibrator_window = CalibratorWindowState::Running(calibrator);
             }
             CalibratorWindowState::Running(_) => {
-                panic!("start_calibration: calibrator already running.")
+                panic!("start_calibration: calibrator already running.");
             }
         }
     }
@@ -263,7 +261,7 @@ impl eframe::App for App {
                         let response = calibrator.update(ctx);
                         match response {
                             CalibratorWindowResponse::Finish(_) => {
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close)
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                             }
                             CalibratorWindowResponse::Continue => {}
                         }

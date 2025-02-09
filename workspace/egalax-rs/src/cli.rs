@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use const_format::formatcp;
 use std::{
     fmt,
@@ -7,10 +7,9 @@ use std::{
     process::exit,
 };
 
-use crate::error::EgalaxError;
+use crate::{config::Config, error::EgalaxError};
 
-const CONFIG_NAME: &str = "config.toml";
-const FALLBACK_CONFIG: &str = formatcp!("./{}", CONFIG_NAME);
+pub const CONFIG_NAME: &str = "config.toml";
 const FALLBACK_DEVICE: &str = "/dev/hidraw.egalax";
 
 /// Necessary settings to execute the driver.
@@ -18,25 +17,24 @@ const FALLBACK_DEVICE: &str = "/dev/hidraw.egalax";
 pub struct ProgramArgs {
     /// Path to the hidraw device.
     device: PathBuf,
-    /// Path to the config file.
-    config: PathBuf,
+    /// Path to the config file. `None` if no config found (should use [`Config::default`] in that case)
+    config: Option<PathBuf>,
 }
 
 pub struct ProgramResources {
     /// Hidraw device
     pub device: File,
     /// Config file.
-    pub config: File,
+    pub config: Config,
 }
 
 impl fmt::Display for ProgramArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Hidraw device: {}\nConfig file: {}",
-            self.device.display(),
-            self.config.display()
-        )
+        writeln!(f, "Hidraw device: {}", self.device.display())?;
+        match self.config() {
+            Some(config) => write!(f, "Config file: {}", config.display()),
+            None => write!(f, "Config file: (default config)"),
+        }
     }
 }
 
@@ -55,8 +53,8 @@ impl ProgramArgs {
         &self.device
     }
 
-    pub fn config(&self) -> &Path {
-        &self.config
+    pub fn config(&self) -> Option<&Path> {
+        self.config.as_deref()
     }
 
     /// Construct the [`Settings`] by parsing command line arguments and following XDG conventions.
@@ -86,27 +84,28 @@ impl ProgramArgs {
             }
         }
 
-        // If config was not defined via CLI arg, try to set it via XDG config directory.
+        // If config was not defined via CLI arg, try to set it via XDG config directory or `/etc/egalax_rs`.
         if config.is_none() {
             config = match xdg::BaseDirectories::with_prefix("egalax_rs") {
                 Ok(xdg_dirs) => {
                     // First try to find an existing file in XDG_CONFIG_HOME and then XDG_CONFIG_DIRS.
-                    xdg_dirs.find_config_file(CONFIG_NAME).or_else(|| {
-                        // If it does not exist, we want to place it in XDG_CONFIG_HOME. This may fail if we cannot create the directories.
-                        match xdg_dirs.place_config_file(CONFIG_NAME) {
-                            Ok(path) => Some(path),
-                            Err(e) => {
-                                log::warn!("Failed to create config directory: {:?}.", e);
-                                None
-                            }
-                        }
-                    })
+                    xdg_dirs.find_config_file(CONFIG_NAME)
                 }
                 Err(e) => {
                     log::warn!("Failed to access XDG directories: {:?}.", e);
                     None
                 }
             };
+            config = config.or_else(|| {
+                let config_path = PathBuf::from(formatcp!("/etc/egalax_rs/{}", CONFIG_NAME));
+                if config_path.exists() {
+                    Some(config_path)
+                } else {
+                    // use default config
+                    log::warn!("Using default configuration since no config.toml was found");
+                    None
+                }
+            });
         }
 
         Self {
@@ -114,15 +113,12 @@ impl ProgramArgs {
                 log::warn!("Using fallback device path: {}.", FALLBACK_DEVICE);
                 FALLBACK_DEVICE.into()
             }),
-            config: config.unwrap_or_else(|| {
-                log::warn!("Using fallback config path: {}.", FALLBACK_CONFIG);
-                FALLBACK_CONFIG.into()
-            }),
+            config,
         }
     }
 
     /// Opens the files given in the program arguments
-    pub fn acquire_resources(self) -> Result<ProgramResources, EgalaxError> {
+    pub fn acquire_resources(&self) -> Result<ProgramResources, EgalaxError> {
         log::trace!("Entering CLI::get_resources.");
         log::info!("Trying to acquire program resources.");
 
@@ -135,14 +131,17 @@ impl ProgramArgs {
         })?;
         log::info!("Opened device node {}.", self.device().display());
 
-        let config = File::open(self.config()).map_err(|e| {
-            anyhow!(
-                "Unable to open config file: {}.\n{}",
-                self.config().display(),
-                e
-            )
-        })?;
-        log::info!("Opened config file:\n{}", self.config().display());
+        let config = if let Some(config) = self.config() {
+            let mut file = File::open(config)
+                .with_context(|| format!("Failed to open config file {}", config.display()))?;
+            log::info!("Opened config file:\n{}", config.display());
+            let config = Config::from_file(&mut file)?;
+            log::info!("Using monitor config:\n{}", config);
+            config
+        } else {
+            log::info!("No config file found, using default configuration");
+            Config::default()
+        };
 
         log::trace!("Leaving CLI::get_resources.");
         Ok(ProgramResources { device, config })
