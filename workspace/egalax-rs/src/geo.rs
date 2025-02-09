@@ -99,7 +99,7 @@ impl<D: Dim> Range<D> {
         if self.max == self.min {
             0.0
         } else {
-            (x - self.min).float() / (self.max - self.min).float()
+            (x - self.min).value() as f32 / (self.max - self.min).value() as f32
         }
     }
 

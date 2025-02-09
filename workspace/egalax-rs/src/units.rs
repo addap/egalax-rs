@@ -50,11 +50,6 @@ impl<D: Dim> udim<D> {
     pub fn value(self) -> UdimRepr {
         self.1
     }
-
-    /// The underlying dimensionless value as an f32.
-    pub fn float(self) -> f32 {
-        self.value() as f32
-    }
 }
 
 impl<D: Dim> fmt::Display for udim<D> {
