@@ -83,11 +83,15 @@ impl Config {
         Ok(config)
     }
 
+    pub fn to_toml_string(&self) -> Result<String, EgalaxError> {
+        Ok(toml::to_string_pretty(&self)?)
+    }
+
     /// Save config to file.
     pub fn save_file(&self, f: &mut File) -> Result<(), EgalaxError> {
         log::trace!("Entering Config::save_file");
 
-        let config_file = toml::to_string_pretty(&self)?;
+        let config_file = self.to_toml_string()?;
         f.write_all(config_file.as_bytes())?;
 
         log::trace!("Leaving Config::save_file");

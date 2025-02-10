@@ -10,6 +10,7 @@ use std::{
 use crate::{config::Config, error::EgalaxError};
 
 pub const CONFIG_NAME: &str = "config.toml";
+pub const DEFAULT_CONFIG_PATH: &str = formatcp!("/etc/egalax_rs/{}", CONFIG_NAME);
 const FALLBACK_DEVICE: &str = "/dev/hidraw.egalax";
 
 /// Necessary settings to execute the driver.
@@ -97,7 +98,7 @@ impl ProgramArgs {
                 }
             };
             config = config.or_else(|| {
-                let config_path = PathBuf::from(formatcp!("/etc/egalax_rs/{}", CONFIG_NAME));
+                let config_path = PathBuf::from(DEFAULT_CONFIG_PATH);
                 if config_path.exists() {
                     Some(config_path)
                 } else {

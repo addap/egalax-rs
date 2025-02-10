@@ -93,10 +93,38 @@ impl App {
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else if ctx.input(|i| i.key_pressed(Key::Enter)) {
-            let mut config_file = File::create(&self.config_path).expect("Unable to open file");
-            if let Err(e) = self.current_config.save_file(&mut config_file) {
-                // a.d. TODO improve error handling.
-                eprintln!("{}", e);
+            let config_str = self
+                .current_config
+                .to_toml_string()
+                .expect("Cannot write config to TOML");
+            // try writing directly - if that doesn't work try escalating privileges
+            if let Err(err) = std::fs::write(&self.config_path, &config_str) {
+                log::trace!(
+                    "Cannot write config directly (see error below); trying with pkexec: {}",
+                    err
+                );
+                let res = std::process::Command::new("pkexec")
+                    .arg(std::env::args_os().next().unwrap())
+                    .arg("--apply-config")
+                    .arg(self.config_path.as_os_str())
+                    .arg(&config_str)
+                    .status();
+                let res = match res {
+                    Ok(res) => res,
+                    Err(err) => {
+                        log::error!("Could not run pkexec to save config: {}", err);
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        return;
+                    }
+                };
+                if res.code() == Some(126) {
+                    // according to the manpage, this means the user declined
+                    log::trace!("Authorization declined");
+                    return;
+                }
+                if res.success() {
+                    log::trace!("Successfully copied config");
+                }
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else if ctx.input(|i| i.key_pressed(Key::C)) {
