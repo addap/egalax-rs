@@ -1,2 +1,3 @@
 # When creating /dev/hidraw* for the eGalax usb touchscreen, start the `egalax-rs@.service` with the device node as input.
-SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input", TAG+="systemd", ENV{SYSTEMD_WANTS}="egalax-rs@.service"
+# Add egalax-rs group so that the driver can access it and uaccess tag so that the user can calibrate it
+SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="egalax-rs", TAG+="systemd", TAG+="uaccess", ENV{SYSTEMD_WANTS}="egalax-rs@%N.service"

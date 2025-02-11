@@ -4,4 +4,18 @@ Description=Input driver for eGalax touchscreen at %I.
 [Service]
 Type=simple
 Environment="RUST_LOG=warn"
-ExecStart=/home/adrian/.cargo/bin/egalax-rs --dev %I
+ExecStart=/usr/bin/egalax-rs --dev %I
+User=egalax-rs
+ProtectSystem=strict
+NoNewPrivileges=true
+RemoveIPC=true
+PrivateTmp=true
+ProtectHome=true
+PrivateNetwork=true
+PrivateUsers=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
