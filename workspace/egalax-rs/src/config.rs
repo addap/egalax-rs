@@ -1,6 +1,6 @@
 use evdev_rs::enums::EV_KEY;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, io::Read, io::Write, time::Duration};
+use std::{fmt, time::Duration};
 
 use crate::{error::EgalaxError, geo::AABB};
 
@@ -71,30 +71,8 @@ impl fmt::Display for Config {
 }
 
 impl Config {
-    /// Load config from file.
-    pub fn from_file(f: &mut File) -> Result<Self, EgalaxError> {
-        log::trace!("Entering Config::from_file.");
-
-        let mut config_file = String::new();
-        f.read_to_string(&mut config_file)?;
-        let config = toml::from_str(&config_file)?;
-
-        log::trace!("Leaving Config::from_file.");
-        Ok(config)
-    }
-
+    /// Serialize config in TOML format.
     pub fn to_toml_string(&self) -> Result<String, EgalaxError> {
         Ok(toml::to_string_pretty(&self)?)
-    }
-
-    /// Save config to file.
-    pub fn save_file(&self, f: &mut File) -> Result<(), EgalaxError> {
-        log::trace!("Entering Config::save_file");
-
-        let config_file = self.to_toml_string()?;
-        f.write_all(config_file.as_bytes())?;
-
-        log::trace!("Leaving Config::save_file");
-        Ok(())
     }
 }

@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context};
 use const_format::formatcp;
 use std::{
     fmt,
-    fs::File,
+    fs::{self, File},
     path::{Path, PathBuf},
     process::exit,
 };
@@ -132,11 +132,12 @@ impl ProgramArgs {
         })?;
         log::info!("Opened device node {}.", self.device().display());
 
-        let config = if let Some(config) = self.config() {
-            let mut file = File::open(config)
-                .with_context(|| format!("Failed to open config file {}", config.display()))?;
-            log::info!("Opened config file:\n{}", config.display());
-            let config = Config::from_file(&mut file)?;
+        let config = if let Some(config_path) = self.config() {
+            let config = fs::read_to_string(config_path)
+                .with_context(|| format!("Failed to open config file {}", config_path.display()))?;
+            log::info!("Opened config file:\n{}", config_path.display());
+
+            let config = toml::from_str(&config)?;
             log::info!("Using monitor config:\n{}", config);
             config
         } else {

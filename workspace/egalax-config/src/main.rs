@@ -8,13 +8,14 @@
 
 mod app;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context};
 use thiserror::Error;
 
 use app::App;
-use egalax_rs::cli::{ProgramArgs, ProgramResources, CONFIG_NAME, DEFAULT_CONFIG_PATH};
+use egalax_rs::cli::{ProgramArgs, ProgramResources, DEFAULT_CONFIG_PATH};
 
 /// Combination of errors from our driver of the GUI framework.
 #[derive(Debug, Error)]
@@ -24,7 +25,7 @@ enum Error {
     #[error("{0}")]
     Egalax(#[from] egalax_rs::error::EgalaxError),
     #[error("{0}")]
-    Other(#[from] anyhow::Error),
+    Generic(#[from] anyhow::Error),
 }
 
 fn main() -> Result<(), Error> {
@@ -43,13 +44,13 @@ fn main() -> Result<(), Error> {
             .context("expecting 2 arguments")?
             .into_string()
             .map_err(|_| anyhow!("invalid config string"))?;
-        std::fs::create_dir_all(
+        fs::create_dir_all(
             PathBuf::from(&config_path)
                 .parent()
                 .context("invalid path")?,
         )
         .context("failed to create config directories")?;
-        std::fs::write(config_path, config).context("failed to write config file")?;
+        fs::write(config_path, config).context("failed to write config file")?;
         return Ok(());
     }
 

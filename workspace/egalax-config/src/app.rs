@@ -4,7 +4,7 @@ mod calibrate;
 mod evdev_events;
 
 use egui::{vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder, ViewportClass};
-use std::{fs::File, mem, path::PathBuf};
+use std::{mem, path::PathBuf};
 
 use calibrate::Calibrator;
 use egalax_rs::{config::Config, geo::AABB};
