@@ -1,13 +1,10 @@
-use anyhow::anyhow;
-use async_channel::TryRecvError;
+use async_channel::{RecvError, SendError, TryRecvError};
+use async_fs::File;
 use egui::{vec2, Color32, Id, Key, Painter, Pos2, Rect, Stroke, TextStyle, Vec2, ViewportId};
 use evdev_rs::TimeVal;
-use nix::poll::{self, PollFd, PollFlags, PollTimeout};
+use futures_lite::{future, io::AsyncReadExt};
 use std::{
     collections::VecDeque,
-    fs::File,
-    io::Read,
-    os::fd::AsFd,
     thread::{self, JoinHandle},
 };
 use std::{path::Path, time::SystemTime};
@@ -23,7 +20,6 @@ use egalax_rs::{
     units::{udim, Dim},
 };
 
-const PACKET_TIMEOUT_MS: u8 = 10;
 const NUM_DECALS: usize = 50;
 const CIRCLE_OFFSET: f32 = 0.15;
 const CALIBRATION_CIRCLE_POSIIONS: [Vec2; 4] = [
@@ -438,84 +434,60 @@ fn packet_reader(
     rx_exit: async_channel::Receiver<()>,
     ctx: &egui::Context,
 ) {
-    let device_node = File::open(device_path).unwrap_or_else(|_| {
-        panic!(
-            "Opening `{:?}` failed. USB cable to monitor disconnected?",
-            device_path
-        )
-    });
-    log::info!("Opened device node `{:?}`", device_path);
-
-    fn read_packets(
-        mut device_node: File,
+    async fn read_packets(
+        device_path: &Path,
         tx_packet: async_channel::Sender<USBMessage>,
         rx_exit: async_channel::Receiver<()>,
         ctx: &egui::Context,
     ) -> Result<(), EgalaxError> {
-        log::trace!("Entering read_packets.");
+        let mut device_node = File::open(device_path).await.unwrap_or_else(|_| {
+            panic!(
+                "Opening `{:?}` failed. USB cable to monitor disconnected?",
+                device_path
+            )
+        });
+        enum Message {
+            Exit(Result<(), RecvError>),
+            USB(std::io::Result<()>),
+        }
+        log::info!("Opened device node `{:?}`", device_path);
 
-        let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
+        loop {
+            let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
 
-        'main: loop {
-            match rx_exit.try_recv() {
-                Ok(()) => {
-                    log::info!("Packet reader received exit signal");
-                    break 'main;
+            let race = future::race(async { Message::Exit(rx_exit.recv().await) }, async {
+                Message::USB(device_node.read_exact(&mut raw_packet.0).await)
+            })
+            .await;
+
+            match race {
+                Message::Exit(res) => match res {
+                    Ok(()) => {
+                        log::info!("Packet reader received exit signal");
+                        return Ok(());
+                    }
+                    Err(RecvError) => unreachable!(
+                        "The sender is only dropped after the packet reader thread has finished"
+                    ),
+                },
+                Message::USB(res) => {
+                    let _ = res?;
+                    log::info!("Read raw packet: {}", raw_packet);
+
+                    let time = TimeVal::try_from(SystemTime::now())?;
+                    let packet = USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))?;
+                    let msg = packet.with_time(time);
+
+                    match tx_packet.send(msg).await {
+                            Err(SendError(_)) => unreachable!("The sender is only dropped after the packet reader thread has finished"),
+                            Ok(()) => ctx.request_repaint_of(ViewportId(Id::new("calibrator"))),
+                        };
                 }
-                // No exit signal, so try to read from device.
-                Err(TryRecvError::Empty) => {}
-                Err(TryRecvError::Closed) => unreachable!(
-                    "The sender is only dropped after the packet reader thread has finished"
-                ),
-            }
-
-            let mut fds = [PollFd::new(device_node.as_fd(), PollFlags::POLLIN)];
-            match poll::poll(&mut fds, PollTimeout::from(PACKET_TIMEOUT_MS)) {
-                // Timeout, nothing to check
-                Ok(0) => continue 'main,
-                // Device node is ready.
-                Ok(1) => {
-                    match device_node.read(&mut raw_packet.0) {
-                        Ok(RAW_PACKET_LEN) => {
-                            log::info!("Read raw packet: {}", raw_packet);
-
-                            let time = TimeVal::try_from(SystemTime::now())?;
-                            let packet =
-                                USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))?;
-                            let msg = packet.with_time(time);
-
-                            match tx_packet.send_blocking(msg) {
-                                Err(_) => {
-                                    return Err(anyhow!(
-                                        "The packet receiver unexpectedly hung up."
-                                    )
-                                    .into())
-                                }
-                                Ok(()) => ctx.request_repaint_of(ViewportId(Id::new("calibrator"))),
-                            };
-                        }
-                        // I think if the monitor sends a packet, then the kernel will make all bytes available at once.
-                        // Therefore, in a situation where I cannot read RAW_PACKET_LEN bytes I want to fail fast.
-                        Ok(_) => {
-                            return Err(anyhow!("Read partial packet.").into());
-                        }
-                        Err(e) => {
-                            return Err(e.into());
-                        }
-                    };
-                }
-                Err(errno) => {
-                    return Err(anyhow!("Error during poll: {errno}.").into());
-                }
-                _ => unreachable!("Only possible return values are 0, 1 or error."),
             }
         }
-
-        log::trace!("Leaving read_packets.");
-        Ok(())
     }
 
-    if let Err(e) = read_packets(device_node, tx_packet, rx_exit, ctx) {
-        eprintln!("Calibrator packet reader thread encountered an error:\n{e}");
+    if let Err(e) = async_io::block_on(read_packets(device_path, tx_packet, rx_exit, ctx)) {
+        log::error!("Calibrator packet reader thread encountered an error:\n{e}");
     }
 }
