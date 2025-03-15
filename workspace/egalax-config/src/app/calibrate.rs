@@ -471,7 +471,7 @@ fn packet_reader(
                     ),
                 },
                 Message::USB(res) => {
-                    let _ = res?;
+                    res.unwrap();
                     log::info!("Read raw packet: {}", raw_packet);
 
                     let time = TimeVal::try_from(SystemTime::now())?;
