@@ -2,6 +2,11 @@
 name = "egalax-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Adrian Dapprich <adrian@dappri.ch>"]
+license = "MIT"
+description = "An input driver for iiyama ProLite T1930S monitor with integrated touchscreen."
+repository = "https://github.com/addap/egalax-rs/"
+keywords = ["touchscreen", "egalax", "uinput"]
 
 [dependencies]
 log = { workspace = true }
@@ -10,14 +15,14 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 const_format = { workspace = true }
 
-evdev-rs = { workspace = true, features = [ "serde" ] }
+evdev-rs = { workspace = true, features = ["serde"] }
 
-serde = { version = "1.0", features = [ "derive" ] }
+serde = { version = "1.0", features = ["derive"] }
 toml = { version = "0.8.19" }
 xdg = { version = "2.5.2" }
 
 [dev-dependencies]
-nix = { workspace = true, features = [ "fs" ] }
+nix = { workspace = true, features = ["fs"] }
 tempdir = { version = "0.3.7" }
 
 [[example]]
