@@ -8,24 +8,9 @@ use std::{mem, path::PathBuf};
 
 use calibrate::Calibrator;
 use egalax_rs::{config::Config, geo::AABB};
-use evdev_events::EV_KEYS;
 
 const FOOTER_STYLE: &str = "footer";
 const CONTENT_OFFSET: f32 = 0.3;
-
-struct Input {
-    has_moved: String,
-    right_click_wait: String,
-}
-
-impl Input {
-    fn new(config: &Config) -> Self {
-        Self {
-            has_moved: config.has_moved_threshold.to_string(),
-            right_click_wait: config.right_click_wait_ms.to_string(),
-        }
-    }
-}
 
 struct StaticData {
     quit_save_msg: String,
@@ -44,7 +29,6 @@ enum CalibratorWindowResponse {
 pub struct App {
     current_config: Config,
     original_config: Config,
-    input: Input,
     device_path: PathBuf,
     config_path: PathBuf,
     calibrator_window: CalibratorWindowState,
@@ -64,7 +48,6 @@ impl App {
             .options_mut(|options| options.fallback_theme = Theme::Light);
 
         let current_config = original_config;
-        let input = Input::new(&original_config);
         let static_data = StaticData {
             quit_save_msg: format!("Quit & save to \"{}\"", config_path.display()),
         };
@@ -75,7 +58,6 @@ impl App {
         Self {
             current_config,
             original_config,
-            input,
             device_path,
             config_path,
             calibrator_window: CalibratorWindowState::Deactivated,
@@ -172,67 +154,6 @@ impl App {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical(|ui| {
                 ui.add_space(srect.lerp_inside(vec2(0.0, CONTENT_OFFSET)).y);
-                ui.horizontal(|ui| {
-                    ui.label(format!(
-                        "Left-Click Event ({:?}): ",
-                        self.current_config.ev_left_click
-                    ));
-                    egui::ComboBox::from_id_salt(1)
-                        .selected_text(format!("{:?}", self.current_config.ev_left_click))
-                        .show_ui(ui, |ui| {
-                            for ev_key in EV_KEYS {
-                                ui.selectable_value(
-                                    &mut self.current_config.ev_left_click,
-                                    ev_key,
-                                    format!("{:?}", ev_key),
-                                );
-                            }
-                        });
-                });
-                ui.horizontal(|ui| {
-                    ui.label(format!(
-                        "Right-Click Event ({:?}): ",
-                        self.current_config.ev_right_click
-                    ));
-                    egui::ComboBox::from_id_salt(2)
-                        .selected_text(format!("{:?}", self.current_config.ev_right_click))
-                        .show_ui(ui, |ui| {
-                            for ev_key in EV_KEYS {
-                                ui.selectable_value(
-                                    &mut self.current_config.ev_right_click,
-                                    ev_key,
-                                    format!("{:?}", ev_key),
-                                );
-                            }
-                        });
-                });
-                ui.horizontal(|ui| {
-                    ui.label(format!(
-                        "Has-Moved Threshold ({}): ",
-                        self.current_config.has_moved_threshold
-                    ));
-                    if ui.text_edit_singleline(&mut self.input.has_moved).changed() {
-                        match self.input.has_moved.parse::<f32>() {
-                            Ok(f) => self.current_config.has_moved_threshold = f,
-                            Err(e) => eprintln!("Has-moved threshold parse error: {e}"),
-                        }
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label(format!(
-                        "Right-Click Wait Time ({}): ",
-                        self.current_config.right_click_wait_ms
-                    ));
-                    if ui
-                        .text_edit_singleline(&mut self.input.right_click_wait)
-                        .changed()
-                    {
-                        match self.input.right_click_wait.parse::<u64>() {
-                            Ok(ms) => self.current_config.right_click_wait_ms = ms,
-                            Err(e) => eprintln!("Right-click wait time parse error: {e}"),
-                        }
-                    }
-                });
                 ui.horizontal(|ui| {
                     ui.label("Calibration Points: ");
                     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::DARK_GRAY;
