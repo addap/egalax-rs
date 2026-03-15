@@ -6,36 +6,40 @@ Translates from the touchscreen's USB protocol into commands to control a virtua
 ## Build & Install
 
 ### Dependencies
-- xrandr: get screen size information.
-- X11: dependency of xrandr
-- evdev: interact with uinput.
+- `libevdev` version `>= 1.11`: interact with uinput.
+- `rust / cargo` (compile time only): to compile `egalax-rs` 
 
 #### openSUSE
 ```bash
-$ sudo zypper install libXrandr-devel libX11-devel libevdev-devel
+$ sudo zypper install libevdev-devel
 ```
 
 #### Ubuntu
 ```bash
-$ sudo apt install libxrandr-dev libx11-dev libevdev-dev 
+$ sudo apt install libevdev-dev 
 ```
 
 Then to build and install the program.
 ```
+$ cd workspace/
 $ cargo build
-$ cargo install --path .
+$ cargo install --path ./egalax-rs/ && cargo install --path ./egalax-config/ 
 ```
 
-The `linux_config/` directory contains various configuration files to enable a smooth autostart for the driver. 
-Put the file `egalax@.service` into `/etc/systemd/system` and `53-egalax.rules` into `/etc/udev/rules.d` to automatically start the driver when the monitor USB cable is plugged in.
+The driver needs the following permissions:
+- Read permission on the device passed to `--dev`
+- Read / Write / ioctl permission on `/dev/uinput`
+
+The `linux_config/` directory contains various configuration files to implement these permissions:
+- Put the file `egalax@.service` into `/etc/systemd/system`
+- Put the file `51-hidraw.rules` into `/etc/udev/rules.d` to automatically start the driver when the monitor USB cable is plugged in.
 
 ## File Structure
 
-- `dis/` - Ghidra project to disassemble the manufacturer's eGTouchD driver.
 - `logs/` - Various log outputs which are discussed below.
 - `Guide/` - Resources from the manufacturer. PDFs which describe the the monitor and a protocol of the touchscreen.  
-           Though, our monitor actually uses a different protocol as discussed below.
-- `linux_config/` - Config files to automatically start the driver when the USB cable is plugged in.
+  Though, our monitor actually uses a different protocol as discussed below.
+- `linux_config/` - Linux config files for `udev` for autostart, `systemd` units etc.
 - `workspace` - Code for the driver.
 
 ## Background
@@ -61,56 +65,56 @@ Below is a summary of how a generic HID device with a kernel driver works compar
 
 - Device sends HID reports to computer which are handled in the kernel by [usbhid](https://docs.kernel.org/input/input.html#hid-generic) and converted to input events.
 - [evdev](https://docs.kernel.org/input/input.html#evdev) is the interface for userspace applications to receive input events. All the event nodes in `/dev/input/` belong to evdev.
-- The xorg drivers `xf86-input-{evdev,libinput}` are wrappers around evdev to relay input events to the X server.
-- Finally, the event reaches the X server and then the client application that will react to it.
+- The xorg drivers `xf86-input-{evdev,libinput}` (on X) and `libinput` (on Wayland) are wrappers around `evdev` to relay input events to the display server.
+- Finally, the event reaches client application that will react to it.
     </td>
 <td>
 
 - Device sends HID reports to computer as before but instead of relying on usbhid in the kernel we get the raw HID report data in userspace via the [hidraw driver](https://docs.kernel.org/hid/hidraw.html).
-- We interpret the HID report and generate input events that we inject back into the input subsystem using uinput.
-- Then, evdev will present these events to userspace drivers as before.
-- The xorg drivers `xf86-input-{evdev,libinput}` are wrappers around evdev to relay input events to the X server.
-- Finally, the event reaches the X server and then the client application that will react to it.
+- We interpret the HID report and generate input events that we inject back into the input subsystem using `uinput`.
+- Then, `evdev` will present these events to userspace drivers as before.
+- The xorg drivers `xf86-input-{evdev,libinput}` (on X) and `libinput` (on Wayland) are wrappers around `evdev` to relay input events to the display server.
+- Finally, the event reaches client application that will react to it.
 </td>
 </tr>
 <tr>
     <td>
 
 ```
-  X server & client                   
+  Display server & client                   
     ▲                                 
     │                                 
-  xf86-input-{evdev,libinput}         
-    ▲                                 
-    │evdev                            
-    │                       user-space
- ───┼─────────────────────────────────
-    │                     kernel-space
-    │                  input subsystem
-  hidraw driver                       
-    ▲                                 
-    │                                 
-  physical device                     
+  xf86-input-{evdev,libinput}, libinput
+    ▲                                  
+    │evdev                             
+    │                       user-space 
+ ───┼──────────────────────────────────
+    │                     kernel-space 
+    │                  input subsystem 
+  hidraw driver                        
+    ▲                                  
+    │                                  
+  physical device                      
 ```
 
 </td>
 <td>
 
 ```
- X server & client                   
+ Display server & client                   
    ▲                                 
    │                                 
- xf86-input-{evdev,libinput}         
+ xf86-input-{evdev,libinput}, libinput
                     ▲                
- egalax-rs─┐        │evdev           
+ egalax-rs─┐        │evdev            
    ▲       │uinput  │      user-space            
-───┼───────▼────────┼────────────────
-   │                     kernel-space
-   │                  input subsystem
- hidraw driver                       
-   ▲                                 
-   │                                 
- physical device                     
+───┼───────▼────────┼─────────────────
+   │                     kernel-space 
+   │                  input subsystem 
+ hidraw driver                        
+   ▲                                  
+   │                                  
+ physical device                      
 ```
 </td>
 </tr>
@@ -143,10 +147,7 @@ Hidraw uses a dynamic major number, meaning that udev should be relied on to cre
 
 This affected me because some time ago I used to use the first hidraw device `/dev/hidraw0` to read the touchscreen input, but currently this device is taken up by the buttons on my external USB speakers.
 For development it's easier if we have a static device node. 
-For that we use the following udev rules in the file `linux_config/51-hidraw-dev.rules`
-```
-SUBSYSTEM=="hidraw", ACTION=="add", SUBSYSTEMS=="usb", ATTRS{idProduct}=="0001", ATTRS{idVendor}=="0eef", GROUP="input", SYMLINK+="hidraw.egalax"
-```
+For that we use the udev rules in the file `linux_config/51-hidraw-dev.rules`.
 When the touchscreen is plugged-in this creates the device node `/dev/hidraw.egalax` from which we can read the HID reports.
 
 We can get the product and vendor ID by querying the connected USB devices using `lsusb`. This also shows us the USB bus and device ID that we need in the following.
