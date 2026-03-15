@@ -7,7 +7,6 @@ use std::time::{Duration, Instant, SystemTime};
 use std::{io, thread};
 
 use crate::config::Config;
-use crate::error::EgalaxError;
 use crate::geo::Point2D;
 use crate::protocol::{PacketTag, RawPacket, TouchState, USBMessage, USBPacket, RAW_PACKET_LEN};
 
@@ -163,10 +162,10 @@ impl Driver {
 
     /// Setup the virtual device with uinput.
     /// Customized from <https://github.com/ndesh26/evdev-rs/blob/master/examples/vmouse.rs>
-    fn get_virtual_device(&self) -> Result<UInputDevice, EgalaxError> {
+    fn get_virtual_device(&self) -> anyhow::Result<UInputDevice> {
         log::trace!("Entering Driver::get_virtual_device.");
 
-        let u = UninitDevice::new().ok_or(EgalaxError::Device)?;
+        let u = UninitDevice::new().context("Unable to set up libevdev device struct.")?;
 
         // Setup device
         // as per: https://01.org/linuxgraphics/gfx-docs/drm/input/uinput.html#mouse-movements
@@ -220,7 +219,8 @@ impl Driver {
 
         // Attempt to create UInputDevice from UninitDevice
         log::info!("Create virtual device using uinput.");
-        let vm = UInputDevice::create_from_device(&u).map_err(EgalaxError::IO)?;
+        let vm = UInputDevice::create_from_device(&u)
+            .context("Unable to set up uninput device. Check permissions for /dev/uninput.")?;
 
         // We are supposed to sleep for a small amount of time so that udev can register the device
         thread::sleep(Duration::from_secs(1));
@@ -231,7 +231,7 @@ impl Driver {
 }
 
 /// Send the generated events to the uinput virtual device.
-fn send_events(vm: &UInputDevice, events: &[InputEvent]) -> Result<(), EgalaxError> {
+fn send_events(vm: &UInputDevice, events: &[InputEvent]) -> anyhow::Result<()> {
     log::trace!("Entering driver::send_events.");
 
     for event in events {
@@ -243,10 +243,10 @@ fn send_events(vm: &UInputDevice, events: &[InputEvent]) -> Result<(), EgalaxErr
 }
 
 /// Call a function on all packets in the given stream
-pub fn process_packets<T, F>(stream: &mut T, mut f: F) -> Result<(), EgalaxError>
+pub fn process_packets<T, F>(stream: &mut T, mut f: F) -> anyhow::Result<()>
 where
     T: io::Read,
-    F: FnMut(USBMessage) -> Result<(), EgalaxError>,
+    F: FnMut(USBMessage) -> anyhow::Result<()>,
 {
     let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
 
@@ -265,14 +265,16 @@ where
 
 /// Create a virtual mouse using uinput and then continuously transform packets from the touchscreen into
 /// evdev events that move the mouse.
-pub fn virtual_mouse<T>(stream: &mut T, monitor_cfg: Config) -> Result<(), EgalaxError>
+pub fn virtual_mouse<T>(stream: &mut T, monitor_cfg: Config) -> anyhow::Result<()>
 where
     T: io::Read,
 {
     log::trace!("Entering fn virtual_mouse");
 
     let mut driver = Driver::new(monitor_cfg);
-    let vm = driver.get_virtual_device()?;
+    let vm = driver
+        .get_virtual_device()
+        .context("Unable to set up virtual device.")?;
 
     log::info!(
         "Successfully set up virtual input device with device node {}",

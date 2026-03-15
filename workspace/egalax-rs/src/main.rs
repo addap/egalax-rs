@@ -1,11 +1,8 @@
-use std::result::Result;
-
 use egalax_rs::cli::ProgramArgs;
 use egalax_rs::driver::virtual_mouse;
-use egalax_rs::error::EgalaxError;
 
 /// Read configuration and delegate to virtual mouse function.
-fn main() -> Result<(), EgalaxError> {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     let args = ProgramArgs::get();

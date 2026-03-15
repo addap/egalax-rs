@@ -23,8 +23,6 @@ enum Error {
     #[error("{0}")]
     Eframe(#[from] eframe::Error),
     #[error("{0}")]
-    Egalax(#[from] egalax_rs::error::EgalaxError),
-    #[error("{0}")]
     Generic(#[from] anyhow::Error),
 }
 

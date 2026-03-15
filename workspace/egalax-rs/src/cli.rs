@@ -1,13 +1,14 @@
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use const_format::formatcp;
 use std::{
     fmt,
     fs::{self, File},
     path::{Path, PathBuf},
     process::exit,
+    str::FromStr,
 };
 
-use crate::{config::Config, error::EgalaxError};
+use crate::config::Config;
 
 pub const CONFIG_NAME: &str = "config.toml";
 pub const DEFAULT_CONFIG_PATH: &str = formatcp!("/etc/egalax_rs/{}", CONFIG_NAME);
@@ -119,15 +120,14 @@ impl ProgramArgs {
     }
 
     /// Opens the files given in the program arguments
-    pub fn acquire_resources(&self) -> Result<ProgramResources, EgalaxError> {
+    pub fn acquire_resources(&self) -> anyhow::Result<ProgramResources> {
         log::trace!("Entering CLI::get_resources.");
         log::info!("Trying to acquire program resources.");
 
-        let device = File::open(self.device()).map_err(|e| {
-            anyhow!(
-                "Unable to open hidraw device: {}. USB cable to monitor disconnected?\n\n{}",
+        let device = File::open(self.device()).with_context(|| {
+            format!(
+                "Unable to open hidraw device: {}. USB cable to monitor disconnected?",
                 self.device().display(),
-                e
             )
         })?;
         log::info!("Opened device node {}.", self.device().display());
@@ -137,7 +137,9 @@ impl ProgramArgs {
                 .with_context(|| format!("Failed to open config file {}", config_path.display()))?;
             log::info!("Opened config file:\n{}", config_path.display());
 
-            let config = toml::from_str(&config)?;
+            let config = Config::from_str(&config).with_context(|| {
+                format!("Failed to parse config file {}", config_path.display())
+            })?;
             log::info!("Using monitor config:\n{}", config);
             config
         } else {

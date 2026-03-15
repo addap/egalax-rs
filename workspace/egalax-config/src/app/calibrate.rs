@@ -1,3 +1,4 @@
+use anyhow::Context;
 use async_channel::{RecvError, SendError, TryRecvError};
 use async_fs::File;
 use egui::{vec2, Color32, Id, Key, Painter, Pos2, Rect, Stroke, TextStyle, Vec2, ViewportId};
@@ -14,7 +15,6 @@ use super::audio::{self, Sound};
 use super::{CalibratorWindowResponse, FOOTER_STYLE};
 use egalax_rs::{
     config::Config,
-    error::EgalaxError,
     geo::{Point2D, AABB},
     protocol::{PacketTag, RawPacket, TouchState, USBMessage, USBPacket, RAW_PACKET_LEN},
     units::{udim, Dim},
@@ -439,13 +439,13 @@ fn packet_reader(
         tx_packet: async_channel::Sender<USBMessage>,
         rx_exit: async_channel::Receiver<()>,
         ctx: &egui::Context,
-    ) -> Result<(), EgalaxError> {
-        let mut device_node = File::open(device_path).await.unwrap_or_else(|_| {
-            panic!(
+    ) -> anyhow::Result<()> {
+        let mut device_node = File::open(device_path).await.with_context(|| {
+            format!(
                 "Opening `{:?}` failed. USB cable to monitor disconnected?",
                 device_path
             )
-        });
+        })?;
         enum Message {
             Exit(Result<(), RecvError>),
             USB(std::io::Result<()>),
@@ -474,8 +474,10 @@ fn packet_reader(
                     res.unwrap();
                     log::info!("Read raw packet: {}", raw_packet);
 
-                    let time = TimeVal::try_from(SystemTime::now())?;
-                    let packet = USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))?;
+                    let time = TimeVal::try_from(SystemTime::now())
+                        .expect("The system time seems invalid. Can this even happen?");
+                    let packet = USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))
+                        .context("Received an invalid packet from the USB device.")?;
                     let msg = packet.with_time(time);
 
                     match tx_packet.send(msg).await {

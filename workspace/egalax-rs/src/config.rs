@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, str::FromStr};
 
-use crate::{error::EgalaxError, geo::AABB};
+use crate::{
+    error::{ConfigParseError, ConfigSerializeError},
+    geo::AABB,
+};
 
 // a.d. TODO use configparser instead of serde.
 /// Common config options that are taken verbatim from the config file.
@@ -37,9 +40,17 @@ impl fmt::Display for Config {
     }
 }
 
+impl FromStr for Config {
+    type Err = ConfigParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(toml::from_str(s)?)
+    }
+}
+
 impl Config {
     /// Serialize config in TOML format.
-    pub fn to_toml_string(&self) -> Result<String, EgalaxError> {
+    pub fn to_toml_string(&self) -> Result<String, ConfigSerializeError> {
         Ok(toml::to_string_pretty(&self)?)
     }
 }
