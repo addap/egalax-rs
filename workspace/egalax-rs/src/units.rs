@@ -83,6 +83,8 @@ impl<D: Dim> Sub for udim<D> {
     }
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+/// Scaling of a dimension by a float. May produce truncation, rounding and overflow errors.
 impl<D: Dim> Mul<f32> for udim<D> {
     type Output = Self;
 

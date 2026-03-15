@@ -14,8 +14,11 @@ use crate::protocol::{PacketTag, RawPacket, TouchState, USBMessage, USBPacket, R
 #[derive(Debug, Clone, Copy)]
 enum DriverTouchState {
     IsTouching {
+        // allow unused since we might need them in the future
+        #[allow(unused)]
         /// The start time of the current touch.
         touch_start_time: Instant,
+        #[allow(unused)]
         /// The initial touch point.
         touch_origin: Point2D,
     },
@@ -54,12 +57,6 @@ impl EventGen {
             time,
             events: Vec::new(),
         }
-    }
-
-    fn add_btn_click(&mut self, btn: EV_KEY) {
-        self.add_btn_press(btn);
-        self.add_syn();
-        self.add_btn_release(btn);
     }
 
     fn add_btn_press(&mut self, btn: EV_KEY) {
@@ -130,12 +127,9 @@ impl Driver {
         let packet = message.packet();
 
         match (self.state.touch_state(), packet.touch_state()) {
-            (DriverTouchState::NotTouching, TouchState::NotTouching) => {
-                // No touch previously and now.
-            }
-            (DriverTouchState::IsTouching { .. }, TouchState::IsTouching) => {
-                // Was touching and still touching.
-                // Just add the coordinates (happens below) and do nothing else.
+            (DriverTouchState::NotTouching, TouchState::NotTouching)
+            | (DriverTouchState::IsTouching { .. }, TouchState::IsTouching) => {
+                // No change is touching status. We'll simply add the coordinates.
             }
             (DriverTouchState::IsTouching { .. }, TouchState::NotTouching) => {
                 // User stopped touching.
@@ -254,7 +248,7 @@ where
         match stream.read_exact(&mut raw_packet.0) {
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             res => res?,
-        };
+        }
         log::info!("Read raw packet: {}", raw_packet);
 
         let time = TimeVal::try_from(SystemTime::now())?;

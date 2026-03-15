@@ -264,7 +264,7 @@ impl Calibrator {
                     return CalibratorWindowResponse::Finish(Some(calibration_points));
                 }
             }
-        };
+        }
         CalibratorWindowResponse::Continue
     }
 
@@ -440,23 +440,24 @@ fn packet_reader(
         rx_exit: async_channel::Receiver<()>,
         ctx: &egui::Context,
     ) -> anyhow::Result<()> {
-        let mut device_node = File::open(device_path).await.with_context(|| {
-            format!(
-                "Opening `{:?}` failed. USB cable to monitor disconnected?",
-                device_path
-            )
-        })?;
         enum Message {
             Exit(Result<(), RecvError>),
-            USB(std::io::Result<()>),
+            Usb(std::io::Result<()>),
         }
+
+        let mut device_node = File::open(device_path).await.with_context(|| {
+            format!(
+                "Opening `{}` failed. USB cable to monitor disconnected?",
+                device_path.display()
+            )
+        })?;
         log::info!("Opened device node `{:?}`", device_path);
 
         loop {
             let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
 
             let race = future::race(async { Message::Exit(rx_exit.recv().await) }, async {
-                Message::USB(device_node.read_exact(&mut raw_packet.0).await)
+                Message::Usb(device_node.read_exact(&mut raw_packet.0).await)
             })
             .await;
 
@@ -470,7 +471,7 @@ fn packet_reader(
                         "The sender is only dropped after the packet reader thread has finished"
                     ),
                 },
-                Message::USB(res) => {
+                Message::Usb(res) => {
                     res.unwrap();
                     log::info!("Read raw packet: {}", raw_packet);
 

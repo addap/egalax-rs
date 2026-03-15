@@ -1,7 +1,6 @@
 #[cfg(feature = "audio")]
 mod audio;
 mod calibrate;
-mod evdev_events;
 
 use egui::{vec2, Color32, FontId, Id, Key, TextStyle, Theme, ViewportBuilder, ViewportClass};
 use std::{mem, path::PathBuf};
