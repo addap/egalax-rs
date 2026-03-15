@@ -1,3 +1,4 @@
+use anyhow::Context;
 use evdev_rs::enums::{BusType, EventCode, EventType, InputProp, EV_ABS, EV_KEY, EV_SYN};
 use evdev_rs::{
     AbsInfo, DeviceWrapper, EnableCodeData, InputEvent, TimeVal, UInputDevice, UninitDevice,
@@ -27,10 +28,6 @@ enum DriverTouchState {
 struct DriverState {
     /// If someone is pressing on the touchscreen.
     touch_state: DriverTouchState,
-    /// If we are emitting a right-click.
-    is_right_click: bool,
-    /// If true, finger has moved too much so we don't emit a right-click.
-    has_moved: bool,
 }
 
 impl DriverState {
@@ -43,8 +40,6 @@ impl Default for DriverState {
     fn default() -> Self {
         Self {
             touch_state: DriverTouchState::NotTouching,
-            is_right_click: false,
-            has_moved: false,
         }
     }
 }
@@ -139,50 +134,26 @@ impl Driver {
             (DriverTouchState::NotTouching, TouchState::NotTouching) => {
                 // No touch previously and now.
             }
+            (DriverTouchState::IsTouching { .. }, TouchState::IsTouching) => {
+                // Was touching and still touching.
+                // Just add the coordinates (happens below) and do nothing else.
+            }
             (DriverTouchState::IsTouching { .. }, TouchState::NotTouching) => {
                 // User stopped touching.
+                log::info!("Releasing touch.");
 
-                if !self.state.is_right_click {
-                    log::info!("Releasing left-click.");
-                    events.add_btn_click(self.config.ev_left_click());
-                }
+                events.add_btn_release(EV_KEY::BTN_TOUCH);
 
                 self.state = DriverState::default();
             }
             (DriverTouchState::NotTouching, TouchState::IsTouching) => {
                 // User started touching.
-                log::info!("left-click");
+                log::info!("Starting touch.");
                 self.state.touch_state = DriverTouchState::IsTouching {
                     touch_start_time: Instant::now(),
                     touch_origin: packet.position(),
                 };
-            }
-            (
-                DriverTouchState::IsTouching {
-                    touch_start_time,
-                    touch_origin,
-                },
-                TouchState::IsTouching,
-            ) => {
-                // User continues touching.
-                // During a continued touch we check whether the finger moved too far and if so we disable right-clicks.
-                // And otherwise we perform a right-click if the user pressed long enough.
-                if !self.state.is_right_click && !self.state.has_moved {
-                    let touch_distance = touch_origin.euclidean_distance_to(&packet.position());
-
-                    if touch_distance > self.config.has_moved_threshold() {
-                        log::info!("Finger has moved while touching. Disabling right-click.");
-                        self.state.has_moved = true;
-                    } else {
-                        let time_touching = Instant::now().duration_since(touch_start_time);
-
-                        if time_touching > self.config.right_click_wait() {
-                            log::info!("right-click");
-                            self.state.is_right_click = true;
-                            events.add_btn_click(self.config.ev_right_click());
-                        }
-                    }
-                }
+                events.add_btn_press(EV_KEY::BTN_TOUCH);
             }
         }
 
@@ -207,14 +178,8 @@ impl Driver {
         u.set_product_id(0xcafe);
         u.enable_property(&InputProp::INPUT_PROP_DIRECT)?;
 
-        log::info!(
-            "Set events that will be generated for virtual device. Left: {:?}, right: {:?}",
-            self.config.ev_left_click(),
-            self.config.ev_right_click()
-        );
         u.enable_event_type(&EventType::EV_KEY)?;
-        u.enable_event_code(&EventCode::EV_KEY(self.config.ev_left_click()), None)?;
-        u.enable_event_code(&EventCode::EV_KEY(self.config.ev_right_click()), None)?;
+        u.enable_event_code(&EventCode::EV_KEY(EV_KEY::BTN_TOUCH), None)?;
 
         // For the minimum and maximum values we must specify the whole virtual screen space
         // to establish a frame of reference. Later, we will always send cursor movements
@@ -223,7 +188,8 @@ impl Driver {
             value: 0,
             minimum: self.config.calibration_points().xrange().min().value(),
             maximum: self.config.calibration_points().xrange().max().value(),
-            // TODO test if fuzz value works as expected. should remove spurious drags when pressing long for right-click
+            // TODO test if fuzz value works as expected.
+            // A.R: maybe make it configurable
             fuzz: 50,
             flat: 0,
             resolution: 0,
@@ -249,6 +215,7 @@ impl Driver {
         )?;
 
         // TODO do we need MSC_SCAN which is present in recording.txt?
+        u.enable_event_type(&EventType::EV_SYN)?;
         u.enable_event_code(&EventCode::EV_SYN(EV_SYN::SYN_REPORT), None)?;
 
         // Attempt to create UInputDevice from UninitDevice
