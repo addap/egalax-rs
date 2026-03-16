@@ -1,25 +1,56 @@
 use anyhow::Context;
+use clap::Parser;
 use const_format::formatcp;
 use std::{
     fmt,
     fs::{self, File},
     path::{Path, PathBuf},
-    process::exit,
     str::FromStr,
 };
 
 use crate::config::Config;
 
+pub const CONFIG_PREFIX: &str = "egalax_rs";
 pub const CONFIG_NAME: &str = "config.toml";
-pub const DEFAULT_CONFIG_PATH: &str = formatcp!("/etc/egalax_rs/{}", CONFIG_NAME);
-const FALLBACK_DEVICE: &str = "/dev/hidraw.egalax";
+pub const DEFAULT_CONFIG_PATH: &str = formatcp!("/etc/{CONFIG_PREFIX}/{CONFIG_NAME}",);
 
-/// Necessary settings to execute the driver.
-#[derive(Debug)]
+fn fallback_config_path() -> Option<PathBuf> {
+    // If config was not defined via CLI arg, try to set it via XDG config directory or `/etc/egalax_rs`.
+    let config = match xdg::BaseDirectories::with_prefix(CONFIG_PREFIX) {
+        Ok(xdg_dirs) => {
+            // First try to find an existing file in XDG_CONFIG_HOME and then XDG_CONFIG_DIRS.
+            xdg_dirs.find_config_file(CONFIG_NAME)
+        }
+        Err(e) => {
+            log::warn!("Failed to access XDG directories: {:?}.", e);
+            None
+        }
+    };
+    let config = config.or_else(|| {
+        let config_path = PathBuf::from(DEFAULT_CONFIG_PATH);
+        if config_path.exists() {
+            Some(config_path)
+        } else {
+            // use default config
+            log::warn!("Using default configuration since no config.toml was found");
+            None
+        }
+    });
+    config
+}
+
+/// Userspace driver for Egalax Touchscreens.
+#[derive(Parser, Debug)]
 pub struct ProgramArgs {
     /// Path to the hidraw device.
+    #[arg(short, long)]
     device: PathBuf,
-    /// Path to the config file. `None` if no config found (should use [`Config::default`] in that case)
+    /// Path to the config file. When not given, falls back to
+    /// - `XDG_CONFIG_HOME/egalax_rs/config.toml`
+    /// - `[every dir in XDG_CONFIG_DIRS]/egalax_rs/config.toml`
+    /// - `/etc/egalax_rs/config.toml`
+    /// - hardcoded defaults
+    #[arg(short, long, verbatim_doc_comment)]
     config: Option<PathBuf>,
 }
 
@@ -40,16 +71,6 @@ impl fmt::Display for ProgramArgs {
     }
 }
 
-/// Print CLI usage and then exit with an error.
-fn exit_usage() -> ! {
-    let program = std::env::args()
-        .next()
-        .unwrap_or_else(|| String::from("<unknown>"));
-    let usage = format!("Usage: {} [--dev FILE] [--config FILE]", program);
-    eprintln!("{}", usage);
-    exit(1)
-}
-
 impl ProgramArgs {
     pub fn device(&self) -> &Path {
         &self.device
@@ -59,68 +80,8 @@ impl ProgramArgs {
         self.config.as_deref()
     }
 
-    /// Construct the [`Settings`] by parsing command line arguments and following XDG conventions.
-    /// Exits the program if program arguments cannot be parsed correctly.
-    pub fn get() -> Self {
-        // Get command line arguments, skipping the program name.
-        let mut args = std::env::args().skip(1);
-        let mut device: Option<PathBuf> = None;
-        let mut config: Option<PathBuf> = None;
-
-        // CLI args have highest precedence.
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--dev" => {
-                    // a.d. Note that we must use the closure `|| exit_usage()` instead of the function pointer `exit_usage`.
-                    // While it is possible to coerce ! to any other type, coercions do not work over the structure of types.
-                    // So we cannot coerce the function pointer type fn() -> ! to the type fn() -> String (and then on to a closure type).
-                    device = Some(args.next().unwrap_or_else(|| exit_usage()).into());
-                }
-                "--config" => {
-                    config = Some(args.next().unwrap_or_else(|| exit_usage()).into());
-                }
-                _ => {
-                    log::error!("Unknown argument: {}", arg);
-                    exit_usage();
-                }
-            }
-        }
-
-        // If config was not defined via CLI arg, try to set it via XDG config directory or `/etc/egalax_rs`.
-        if config.is_none() {
-            config = match xdg::BaseDirectories::with_prefix("egalax_rs") {
-                Ok(xdg_dirs) => {
-                    // First try to find an existing file in XDG_CONFIG_HOME and then XDG_CONFIG_DIRS.
-                    xdg_dirs.find_config_file(CONFIG_NAME)
-                }
-                Err(e) => {
-                    log::warn!("Failed to access XDG directories: {:?}.", e);
-                    None
-                }
-            };
-            config = config.or_else(|| {
-                let config_path = PathBuf::from(DEFAULT_CONFIG_PATH);
-                if config_path.exists() {
-                    Some(config_path)
-                } else {
-                    // use default config
-                    log::warn!("Using default configuration since no config.toml was found");
-                    None
-                }
-            });
-        }
-
-        Self {
-            device: device.unwrap_or_else(|| {
-                log::warn!("Using fallback device path: {}.", FALLBACK_DEVICE);
-                FALLBACK_DEVICE.into()
-            }),
-            config,
-        }
-    }
-
     /// Opens the files given in the program arguments
-    pub fn acquire_resources(&self) -> anyhow::Result<ProgramResources> {
+    pub fn acquire_resources(self) -> anyhow::Result<ProgramResources> {
         log::trace!("Entering CLI::get_resources.");
         log::info!("Trying to acquire program resources.");
 
@@ -132,20 +93,24 @@ impl ProgramArgs {
         })?;
         log::info!("Opened device node {}.", self.device().display());
 
-        let config = if let Some(config_path) = self.config() {
-            let config = fs::read_to_string(config_path)
+        // fall back to standard config paths...
+        let config = self.config.or_else(fallback_config_path);
+
+        let config = if let Some(config_path) = config {
+            let config = fs::read_to_string(&config_path)
                 .with_context(|| format!("Failed to open config file {}", config_path.display()))?;
             log::info!("Opened config file:\n{}", config_path.display());
 
             let config = Config::from_str(&config).with_context(|| {
                 format!("Failed to parse config file {}", config_path.display())
             })?;
-            log::info!("Using monitor config:\n{}", config);
             config
         } else {
+            // ...or to a hardcoded config
             log::info!("No config file found, using default configuration");
             Config::default()
         };
+        log::info!("Using monitor config:\n{}", config);
 
         log::trace!("Leaving CLI::get_resources.");
         Ok(ProgramResources { device, config })
