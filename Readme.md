@@ -135,8 +135,8 @@ This will actually cause the mouse cursor to move but the movement is completely
 Setting `--map-to-output` as described in the [arch wiki](https://wiki.archlinux.org/title/Touchscreen) might help.
 But the movement is also very choppy and I wasn't able to generate a right-click, so I am not going to use this driver.
 
-I am not sure what part of the kernel actually does the processing.
-It is probably [`usbtouchscreen.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/usbtouchscreen.c) since others like [`egalax_ts.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/egalax_ts.c) and [`egalax_ts_serial.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/egalax_ts_serial.c) seem to handle eGalax touchscreens only for non-USB connections. 
+According to a comment in [`usbtouchscreen.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/usbtouchscreen.c#L1650) our device is handled by the generic udbhid driver.
+`usbtouchscreen.c` also includes driver code for other models which uses a slightly different binary protocol. Others like [`egalax_ts.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/egalax_ts.c) and [`egalax_ts_serial.c`](https://github.com/torvalds/linux/blob/a86bf2283d2c9769205407e2b54777c03d012939/drivers/input/touchscreen/egalax_ts_serial.c) seem to handle eGalax touchscreens only for non-USB connections.
 So I just deleted the xorg configuration file again so that the generated events do not reach the X server.
 
 ### Getting Access to the Hidraw Device
