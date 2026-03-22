@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context};
+use clap::Parser;
 use thiserror::Error;
 
 use app::App;
@@ -52,7 +53,7 @@ fn main() -> Result<(), Error> {
         return Ok(());
     }
 
-    let args = ProgramArgs::get();
+    let args = ProgramArgs::parse();
     log::info!("Using arguments:\n{}", args);
 
     let device_path = args.device().to_path_buf();
