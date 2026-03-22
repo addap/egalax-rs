@@ -8,7 +8,7 @@ use std::{io, thread};
 
 use crate::config::Config;
 use crate::geo::Point2D;
-use crate::protocol::{PacketTag, RawPacket, TouchState, USBMessage, USBPacket, RAW_PACKET_LEN};
+use crate::protocol::{RawNumberedReport, Report, ReportNum, TouchState, NUMBERED_REPORT_LEN};
 
 /// Touchstate of the driver that also keeps track of when & where the touch started.
 #[derive(Debug, Clone, Copy)]
@@ -100,7 +100,6 @@ impl EventGen {
     }
 }
 
-/// Driver contains its current state and config used for processing touchscreen packets.
 #[derive(Debug)]
 struct Driver {
     state: DriverState,
@@ -118,15 +117,14 @@ impl Driver {
 
     /// Update the internal state of the driver and return any evdev events that should be emitted.
     /// Linux' input subsystem already filters out duplicate events so we always emit moves to x & y.
-    fn update(&mut self, message: USBMessage) -> Vec<InputEvent> {
+    fn update(&mut self, report: Report, time: TimeVal) -> Vec<InputEvent> {
         log::trace!("Entering Driver::update");
 
-        log::info!("Processing message: {}", message);
+        log::info!("Processing message: {}", report);
 
-        let mut events = EventGen::new(message.time());
-        let packet = message.packet();
+        let mut events = EventGen::new(time);
 
-        match (self.state.touch_state(), packet.touch_state()) {
+        match (self.state.touch_state(), report.touch_state()) {
             (DriverTouchState::NotTouching, TouchState::NotTouching)
             | (DriverTouchState::IsTouching { .. }, TouchState::IsTouching) => {
                 // No change is touching status. We'll simply add the coordinates.
@@ -144,13 +142,13 @@ impl Driver {
                 log::info!("Starting touch.");
                 self.state.touch_state = DriverTouchState::IsTouching {
                     touch_start_time: Instant::now(),
-                    touch_origin: packet.position(),
+                    touch_origin: report.position(),
                 };
                 events.add_btn_press(EV_KEY::BTN_TOUCH);
             }
         }
 
-        events.add_move_position(packet.position(), &self.config);
+        events.add_move_position(report.position(), &self.config);
         events.finish()
     }
 
@@ -236,28 +234,28 @@ fn send_events(vm: &UInputDevice, events: &[InputEvent]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Call a function on all packets in the given stream
-pub fn process_packets<T, F>(stream: &mut T, mut f: F) -> anyhow::Result<()>
+/// Call a function on all HID reports in the given stream.
+pub fn process_reports<T, F>(stream: &mut T, mut f: F) -> anyhow::Result<()>
 where
     T: io::Read,
-    F: FnMut(USBMessage) -> anyhow::Result<()>,
+    F: FnMut(Report, TimeVal) -> anyhow::Result<()>,
 {
-    let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
+    let mut raw_report = RawNumberedReport([0; NUMBERED_REPORT_LEN]);
 
     loop {
-        match stream.read_exact(&mut raw_packet.0) {
+        match stream.read_exact(&mut raw_report.0) {
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             res => res?,
         }
-        log::info!("Read raw packet: {}", raw_packet);
+        log::info!("Read raw report: {}", raw_report);
 
         let time = TimeVal::try_from(SystemTime::now())?;
-        let packet = USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))?;
-        f(packet.with_time(time))?;
+        let report = Report::try_parse(raw_report, Some(ReportNum::Stylus))?;
+        f(report, time)?;
     }
 }
 
-/// Create a virtual mouse using uinput and then continuously transform packets from the touchscreen into
+/// Create a virtual mouse using uinput and then continuously transform reports from the touchscreen into
 /// evdev events that move the mouse.
 pub fn virtual_mouse<T>(stream: &mut T, monitor_cfg: Config) -> anyhow::Result<()>
 where
@@ -275,11 +273,11 @@ where
         vm.devnode().unwrap_or("<unknown>")
     );
 
-    let process_packet = |message| {
-        let events = driver.update(message);
+    let process_report = |report, time| {
+        let events = driver.update(report, time);
         send_events(&vm, &events)
     };
-    process_packets(stream, process_packet)?;
+    process_reports(stream, process_report)?;
 
     log::trace!("Leaving fn virtual_mouse");
     Ok(())

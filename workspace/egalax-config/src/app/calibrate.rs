@@ -2,13 +2,12 @@ use anyhow::Context;
 use async_channel::{RecvError, SendError, TryRecvError};
 use async_fs::File;
 use egui::{vec2, Color32, Id, Key, Painter, Pos2, Rect, Stroke, TextStyle, Vec2, ViewportId};
-use evdev_rs::TimeVal;
 use futures_lite::{future, io::AsyncReadExt};
+use std::path::Path;
 use std::{
     collections::VecDeque,
     thread::{self, JoinHandle},
 };
-use std::{path::Path, time::SystemTime};
 
 #[cfg(feature = "audio")]
 use super::audio::{self, Sound};
@@ -16,7 +15,7 @@ use super::{CalibratorWindowResponse, FOOTER_STYLE};
 use egalax_rs::{
     config::Config,
     geo::{Point2D, AABB},
-    protocol::{PacketTag, RawPacket, TouchState, USBMessage, USBPacket, RAW_PACKET_LEN},
+    protocol::{RawNumberedReport, Report, ReportNum, TouchState, NUMBERED_REPORT_LEN},
     units::{udim, Dim},
 };
 
@@ -127,21 +126,21 @@ impl OngoingState {
         }
     }
 
-    fn calibrate_with_packet(&mut self, packet: &USBPacket) -> Option<CalibrationState> {
+    fn calibrate_with_report(&mut self, report: &Report) -> Option<CalibrationState> {
         // If we are still in one of the four calibration stages we collect the calibration points
-        let p = packet.position();
+        let p = report.position();
 
         self.touch_cloud.push(p);
 
         // When the finger is lifted, we take all the collected points, add them to that stage and go to the next.
-        let result = match (self.touch_state, packet.touch_state()) {
+        let result = match (self.touch_state, report.touch_state()) {
             (TouchState::IsTouching, TouchState::NotTouching) => {
                 let coord = self.touch_cloud.compute_touch_coord();
                 Some(self.advance(coord))
             }
             _ => None,
         };
-        self.touch_state = packet.touch_state();
+        self.touch_state = report.touch_state();
         result
     }
 }
@@ -189,7 +188,7 @@ impl TouchCloud {
 }
 
 pub struct Calibrator {
-    rx_packet: async_channel::Receiver<USBMessage>,
+    rx_report: async_channel::Receiver<Report>,
     tx_exit: async_channel::Sender<()>,
     reader_handle: JoinHandle<()>,
     state: CalibrationState,
@@ -204,17 +203,17 @@ impl Calibrator {
         ctx: &egui::Context,
         #[cfg(feature = "audio")] audio_handle: audio::Handle,
     ) -> Self {
-        let (tx_packet, rx_packet) = async_channel::unbounded();
+        let (tx_report, rx_report) = async_channel::unbounded();
         let (tx_exit, rx_exit) = async_channel::bounded(1);
 
         let reader_handle = thread::spawn({
             let ctx = ctx.clone();
             let device_path = device_path.to_path_buf();
-            move || packet_reader(&device_path, tx_packet, rx_exit, &ctx)
+            move || report_reader(&device_path, tx_report, rx_exit, &ctx)
         });
 
         Self {
-            rx_packet,
+            rx_report,
             tx_exit,
             reader_handle,
             state: CalibrationState::start(),
@@ -227,7 +226,7 @@ impl Calibrator {
     pub fn exit(self) {
         self.tx_exit
             .send_blocking(())
-            .expect("Packet reader thread holds receiver until we send the signal.");
+            .expect("Report reader thread holds receiver until we send the signal.");
         self.reader_handle.join().unwrap();
     }
 
@@ -240,11 +239,11 @@ impl Calibrator {
     fn process_input(&mut self, ctx: &egui::Context) -> CalibratorWindowResponse {
         // Take as many packages as are available.
         loop {
-            match self.rx_packet.try_recv() {
-                Ok(msg) => self.process_packet(msg.packet()),
+            match self.rx_report.try_recv() {
+                Ok(report) => self.process_report(&report),
                 Err(TryRecvError::Closed) => {
                     unreachable!(
-                        "The packet reader thread is active until we send an exit message."
+                        "The report reader thread is active until we send an exit message."
                     )
                 }
                 Err(TryRecvError::Empty) => break,
@@ -275,9 +274,9 @@ impl Calibrator {
         self.decals.push_back(position);
     }
 
-    fn process_packet(&mut self, packet: &USBPacket) {
+    fn process_report(&mut self, report: &Report) {
         if let CalibrationState::Ongoing(ref mut ongoing_state) = self.state {
-            if let Some(new_state) = ongoing_state.calibrate_with_packet(packet) {
+            if let Some(new_state) = ongoing_state.calibrate_with_report(report) {
                 self.state = new_state;
 
                 #[cfg(feature = "audio")]
@@ -285,7 +284,7 @@ impl Calibrator {
             }
         }
 
-        let position = packet.position();
+        let position = report.position();
         if let Some(last_decal) = self.decals.back() {
             if position.euclidean_distance_to(last_decal) > 10.0 {
                 self.add_decal(position);
@@ -428,15 +427,15 @@ fn pos2_from_calibration_points(srect: Rect, calibration_points: AABB, position:
 }
 
 /// Infinite loop of reading from the device node with a timeout and checking the `rx_exit` receiver for a stop signal.
-fn packet_reader(
+fn report_reader(
     device_path: &Path,
-    tx_packet: async_channel::Sender<USBMessage>,
+    tx_report: async_channel::Sender<Report>,
     rx_exit: async_channel::Receiver<()>,
     ctx: &egui::Context,
 ) {
-    async fn read_packets(
+    async fn read_reports(
         device_path: &Path,
-        tx_packet: async_channel::Sender<USBMessage>,
+        tx_report: async_channel::Sender<Report>,
         rx_exit: async_channel::Receiver<()>,
         ctx: &egui::Context,
     ) -> anyhow::Result<()> {
@@ -454,35 +453,32 @@ fn packet_reader(
         log::info!("Opened device node `{:?}`", device_path);
 
         loop {
-            let mut raw_packet = RawPacket([0; RAW_PACKET_LEN]);
+            let mut raw_report = RawNumberedReport([0; NUMBERED_REPORT_LEN]);
 
             let race = future::race(async { Message::Exit(rx_exit.recv().await) }, async {
-                Message::Usb(device_node.read_exact(&mut raw_packet.0).await)
+                Message::Usb(device_node.read_exact(&mut raw_report.0).await)
             })
             .await;
 
             match race {
                 Message::Exit(res) => match res {
                     Ok(()) => {
-                        log::info!("Packet reader received exit signal");
+                        log::info!("Report reader received exit signal");
                         return Ok(());
                     }
                     Err(RecvError) => unreachable!(
-                        "The sender is only dropped after the packet reader thread has finished"
+                        "The sender is only dropped after the report reader thread has finished"
                     ),
                 },
                 Message::Usb(res) => {
                     res.unwrap();
-                    log::info!("Read raw packet: {}", raw_packet);
+                    log::info!("Read raw report: {}", raw_report);
 
-                    let time = TimeVal::try_from(SystemTime::now())
-                        .expect("The system time seems invalid. Can this even happen?");
-                    let packet = USBPacket::try_parse(raw_packet, Some(PacketTag::TouchEvent))
-                        .context("Received an invalid packet from the USB device.")?;
-                    let msg = packet.with_time(time);
+                    let report = Report::try_parse(raw_report, Some(ReportNum::Stylus))
+                        .context("Received an invalid report from the USB device.")?;
 
-                    match tx_packet.send(msg).await {
-                            Err(SendError(_)) => unreachable!("The sender is only dropped after the packet reader thread has finished"),
+                    match tx_report.send(report).await {
+                            Err(SendError(_)) => unreachable!("The sender is only dropped after the report reader thread has finished"),
                             Ok(()) => ctx.request_repaint_of(ViewportId(Id::new("calibrator"))),
                         };
                 }
@@ -490,7 +486,7 @@ fn packet_reader(
         }
     }
 
-    if let Err(e) = async_io::block_on(read_packets(device_path, tx_packet, rx_exit, ctx)) {
-        log::error!("Calibrator packet reader thread encountered an error:\n{e}");
+    if let Err(e) = async_io::block_on(read_reports(device_path, tx_report, rx_exit, ctx)) {
+        log::error!("Calibrator report reader thread encountered an error:\n{e}");
     }
 }

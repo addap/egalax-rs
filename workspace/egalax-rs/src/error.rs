@@ -4,11 +4,11 @@ use thiserror::Error;
 
 use crate::units::DimE;
 
-/// Errors that can happen during parsing of a packet
+/// Errors that can happen during parsing of a HID report.
 #[derive(Error, Debug, PartialEq, Eq)]
-pub enum ParsePacketError {
-    #[error("Unexpected packet tag: {0}")]
-    UnexpectedTag(u8),
+pub enum ParseReportError {
+    #[error("Unexpected report number: {0}")]
+    UnexpectedReportNum(u8),
     #[error("{0:?} value is out of range of given resolution")]
     WrongResolution(DimE),
 }

@@ -26,7 +26,7 @@ fn virtual_sender(data: Vec<u8>, path: PathBuf) {
     let mut buf = [0; 6];
 
     loop {
-        println!("Sending next raw packet");
+        println!("Sending next raw report");
         let res = hidraw.read_exact(&mut buf);
         if let Ok(()) = res {
             writer.write_all(&buf).unwrap();
