@@ -4,7 +4,7 @@ Description=Input driver for eGalax touchscreen at %I.
 [Service]
 Type=simple
 Environment="RUST_LOG=warn"
-ExecStart=/usr/bin/egalax-rs --dev %I
+ExecStart=/usr/bin/egalax-rs --device %I
 User=egalax-rs
 ProtectSystem=strict
 NoNewPrivileges=true

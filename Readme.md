@@ -27,7 +27,7 @@ $ cargo install --path ./egalax-rs/ && cargo install --path ./egalax-config/
 ```
 
 The driver needs the following permissions:
-- Read permission on the device passed to `--dev`
+- Read permission on the device passed to `--device`
 - Read / Write / ioctl permission on `/dev/uinput`
 
 The `linux_config/` directory contains various configuration files to implement these permissions:
